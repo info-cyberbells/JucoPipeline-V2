@@ -1,6 +1,7 @@
 import User from "../../models/user.model.js";
 import Team from "../../models/team.model.js";
 import Follow from "../../models/follow.model.js";
+import Notification from "../../models/notification.model.js";
 import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
@@ -2305,5 +2306,89 @@ export const searchPlayersForStatistics = async (req, res) => {
   } catch (error) {
     console.error("Search Players Error:", error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+// ============= PLAYER NOTIFICATIONS =============
+
+// Get player notifications
+export const getPlayerNotifications = async (req, res) => {
+  try {
+    const playerId = req.user.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const notifications = await Notification.find({
+      recipientId: playerId
+    })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("createdBy", "firstName lastName role");
+
+    const totalCount = await Notification.countDocuments({
+      recipientId: playerId
+    });
+
+    const unreadCount = await Notification.countDocuments({
+      recipientId: playerId,
+      isRead: false
+    });
+
+    res.status(200).json({
+      success: true,
+      notifications,
+      unreadCount,
+      page,
+      limit,
+      totalCount
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Mark single notification as read (Player)
+export const markPlayerNotificationAsRead = async (req, res) => {
+  try {
+    const playerId = req.user.id;
+    const { notificationId } = req.params;
+
+    const notification = await Notification.findOneAndUpdate(
+      { _id: notificationId, recipientId: playerId },
+      { isRead: true },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({ success: false, message: "Notification not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Notification marked as read"
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Mark all notifications as read (Player)
+export const markAllPlayerNotificationsAsRead = async (req, res) => {
+  try {
+    const playerId = req.user.id;
+
+    await Notification.updateMany(
+      { recipientId: playerId, isRead: false },
+      { isRead: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "All notifications marked as read"
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

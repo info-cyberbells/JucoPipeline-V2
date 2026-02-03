@@ -3,7 +3,7 @@ import { authenticate } from "../middleware/auth.middleware.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
 import { changePassword, deleteProfileImage } from "../controllers/profile.controller.js";
 import { validateChangePassword } from "../validation/profile.validation.js";
-import { getPlayerProfile, updatePlayerProfile, updatePlayerProfileImage, deletePlayerProfileImage, uploadPlayerVideos, deletePlayerVideo, uploadCoachRecommendation, deleteCoachRecommendation, uploadAcademicInfo, deleteAcademicInfo, addStrength,  removeStrength, addAward, removeAward } from "../controllers/player/player.controller.js";
+import { getPlayerProfile, updatePlayerProfile, updatePlayerProfileImage, deletePlayerProfileImage, uploadPlayerVideos, deletePlayerVideo, uploadCoachRecommendation, deleteCoachRecommendation, uploadAcademicInfo, deleteAcademicInfo, addStrength,  removeStrength, addAward, removeAward, getPlayerNotifications, markPlayerNotificationAsRead, markAllPlayerNotificationsAsRead } from "../controllers/player/player.controller.js";
 import { uploadVideos, uploadPDF } from "../middleware/mediaUpload.middleware.js";
 import { uploadProfile } from "../middleware/upload.middleware.js";
 import { getTeamRoster } from "../controllers/teams.controller.js";
@@ -52,5 +52,10 @@ router.delete("/awards", removeAward);
 
 // Teams
 router.get("/team-roster/:teamId", getTeamRoster);
+
+// Notifications
+router.get("/notifications", getPlayerNotifications);
+router.patch("/notifications/read-all", markAllPlayerNotificationsAsRead);
+router.patch("/notifications/:notificationId/read", markPlayerNotificationAsRead);
 
 export default router;

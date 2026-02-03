@@ -2,11 +2,19 @@ import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema(
   {
-    // Who should receive this notification
+    // Who should receive this notification (role-based for admin, null for specific user)
     recipientRole: {
       type: String,
-      enum: ["superAdmin"],
-      required: true,
+      enum: ["superAdmin", "player"],
+      default: null,
+      index: true
+    },
+
+    // Specific user recipient (for player notifications)
+    recipientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
       index: true
     },
 
@@ -83,6 +91,9 @@ const notificationSchema = new mongoose.Schema(
 
 // Fast admin notification feed
 notificationSchema.index({ recipientRole: 1, isRead: 1, createdAt: -1 });
+
+// Fast player notification feed
+notificationSchema.index({ recipientId: 1, isRead: 1, createdAt: -1 });
 
 // Filtering by type + role (e.g. coach registrations)
 notificationSchema.index({ type: 1, "meta.role": 1 });

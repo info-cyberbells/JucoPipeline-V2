@@ -1,0 +1,14 @@
+import express from "express";
+import { getMessages, sendMessage, markAsRead, deleteMessage } from "../controllers/message.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
+import { authorizeRoles } from "../middleware/role.middleware.js";
+
+const router = express.Router();
+router.use(authenticate, authorizeRoles("player", "coach"));
+
+router.get("/:conversationId", getMessages);
+router.post("/send", sendMessage);
+router.patch("/read", markAsRead);
+router.delete("/:messageId", deleteMessage);
+
+export default router;

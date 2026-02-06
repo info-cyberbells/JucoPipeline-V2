@@ -3,7 +3,7 @@ import { Conversation } from "../models/conversation.model.js";
 import { Message } from "../models/message.model.js";
 import User from "../models/user.model.js";
 
-export const startConversation = async (req, res) => {
+export const startConversationCoachOnly = async (req, res) => {
     try {
         const coachId = req.user._id;
         const { playerId, text } = req.body;
@@ -77,6 +77,93 @@ export const startConversation = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+
+export const startConversation = async (req, res) => {
+    try {
+        const initiatorId = req.user._id;
+        const initiatorRole = req.user.role; // coach | scout
+        const { playerId, text } = req.body;
+        const baseURL = `${req.protocol}://${req.get("host")}`;
+
+        // Allow only coach or scout
+        const allowedRoles = ["coach", "scout"];
+        if (!allowedRoles.includes(initiatorRole)) {
+            return res.status(403).json({
+                message: "Only coach or scout can start conversation"
+            });
+        }
+
+        // Check existing conversation between initiator & player
+        let conversation = await Conversation.findOne({
+            "participants.userId": { $all: [initiatorId, playerId] }
+        });
+
+        // Create conversation if not exists
+        if (!conversation) {
+            conversation = await Conversation.create({
+                coachId: initiatorId, // kept for backward compatibility
+                playerId: playerId,
+                participants: [
+                    { userId: initiatorId, role: initiatorRole }, // coach | scout
+                    { userId: playerId, role: "player" }
+                ],
+                initiatedBy: {
+                    userId: initiatorId,
+                    role: initiatorRole
+                },
+                isUnlocked: true
+            });
+        }
+
+        // Create message
+        const message = await Message.create({
+            conversationId: conversation._id,
+            senderId: initiatorId,
+            senderRole: initiatorRole,
+            receiverId: playerId,
+            text
+        });
+
+        // Update last message
+        conversation.lastMessage = {
+            text,
+            senderId: initiatorId,
+            senderRole: initiatorRole,
+            createdAt: message.createdAt
+        };
+
+        await conversation.save();
+
+        // Fetch player basic info
+        const player = await User.findById(playerId).select(
+            "firstName lastName profileImage"
+        );
+
+        const participant = {
+            _id: player._id,
+            firstName: player.firstName,
+            lastName: player.lastName,
+            profileImage: player.profileImage
+                ? `${player.profileImage}`
+                : null
+        };
+
+        return res.status(201).json({
+            conversation: {
+                ...conversation.toObject(),
+                participant,
+                unreadCount: 0
+            },
+            message
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            message: err.message
+        });
+    }
+};
+
 
 export const startConversationOLLLD = async (req, res) => {
     try {
@@ -270,7 +357,7 @@ export const getMyConversations = async (req, res) => {
                 "participant.profileImage": {
                     $cond: {
                         if: { $ifNull: ["$participant.profileImage", false] },
-                        then: { $concat: [baseURL, "$participant.profileImage"] },
+                        then: { $concat: ["$participant.profileImage"] },
                         else: null
                     }
                 }

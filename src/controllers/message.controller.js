@@ -51,14 +51,14 @@ export const getMessages = async (req, res) => {
             _id: msg.senderId._id,
             firstName: msg.senderId.firstName,
             role: msg.senderId.role,
-            profileImage: msg.senderId.profileImage ? `${baseURL}${msg.senderId.profileImage}` : null
+            profileImage: msg.senderId.profileImage ? `${msg.senderId.profileImage}` : null
         },
 
         receiver: {
             _id: msg.receiverId._id,
             firstName: msg.receiverId.firstName,
             role: msg.receiverId.role,
-            profileImage: msg.receiverId.profileImage ? `${baseURL}${msg.receiverId.profileImage}` : null
+            profileImage: msg.receiverId.profileImage ? `${msg.receiverId.profileImage}` : null
         }
     }));
 
@@ -183,14 +183,14 @@ export const sendMessage = async (req, res) => {
             _id: populatedMessage.senderId._id,
             firstName: populatedMessage.senderId.firstName,
             role: populatedMessage.senderId.role,
-            profileImage: populatedMessage.senderId.profileImage ? `${baseURL}${populatedMessage.senderId.profileImage}` : null
+            profileImage: populatedMessage.senderId.profileImage ? `${populatedMessage.senderId.profileImage}` : null
         },
 
         receiver: {
             _id: populatedMessage.receiverId._id,
             firstName: populatedMessage.receiverId.firstName,
             role: populatedMessage.receiverId.role,
-            profileImage: populatedMessage.receiverId.profileImage ? `${baseURL}${populatedMessage.receiverId.profileImage}` : null
+            profileImage: populatedMessage.receiverId.profileImage ? `${populatedMessage.receiverId.profileImage}` : null
         }
     };
 

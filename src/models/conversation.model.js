@@ -9,7 +9,7 @@ const participantSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["coach", "player"],
+      enum: ["coach", "player", "scout"],
       required: true
     }
   },
@@ -36,7 +36,7 @@ const conversationSchema = new mongoose.Schema(
     ],
     initiatedBy: {
       userId: mongoose.Schema.Types.ObjectId,
-      role: { type: String, enum: ["coach"] }
+      role: { type: String, enum: ["coach", "scout"] }
     },
     isUnlocked: {
       type: Boolean,

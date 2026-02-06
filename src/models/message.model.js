@@ -15,7 +15,7 @@ const messageSchema = new mongoose.Schema(
     },
     senderRole: {
       type: String,
-      enum: ["coach", "player"],
+      enum: ["coach", "player", "scout"],
       required: true
     },
     receiverId: {

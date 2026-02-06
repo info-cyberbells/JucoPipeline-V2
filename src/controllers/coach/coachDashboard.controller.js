@@ -25,6 +25,28 @@ const formatUserData = (user, baseURL) => {
   return userData;
 };
 
+// Helper to format image URL - handles local paths and external URLs
+const formatImageUrl = (imageUrl, baseURL) => {
+  if (!imageUrl) return null;
+
+  // Convert to string to be safe
+  const url = String(imageUrl).trim();
+
+  // If URL is already absolute (starts with http), return as-is
+  if (url.toLowerCase().startsWith('http')) {
+    return url;
+  }
+
+  // If protocol-relative or data URL, return as-is
+  if (url.startsWith('//') || url.startsWith('data:')) {
+    return url;
+  }
+
+  // Otherwise, prepend baseURL for local paths
+  return `${baseURL}${url}`;
+};
+
+
 const POSITION_DETAIL_MAP = {
   P: "Pitcher",
 
@@ -1352,6 +1374,116 @@ export const getVideoRequestsByPlayer = async (req, res) => {
 
   } catch (error) {
     console.error("Get Video Requests By Player Error:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// GET FOLLOWED PLAYERS FOR MESSAGING (Send a Message modal)
+export const getFollowedPlayersForMessaging = async (req, res) => {
+  try {
+    const coachId = req.user.id;
+    const { page = 1, limit = 20, search } = req.query;
+    const baseURL = `${req.protocol}://${req.get("host")}`;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build query for followed players
+    const followQuery = { follower: coachId };
+
+    // Get followed player IDs
+    const followingList = await Follow.find(followQuery).distinct('following');
+
+    if (followingList.length === 0) {
+      return res.json({
+        message: "No followed players found",
+        players: [],
+        pagination: {
+          currentPage: 1,
+          totalPages: 0,
+          totalCount: 0,
+          limit: parseInt(limit),
+          hasMore: false
+        }
+      });
+    }
+
+    // Build player search query
+    let playerQuery = {
+      _id: { $in: followingList },
+      role: "player"
+    };
+
+    // Add search filter if provided
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      playerQuery.$or = [
+        { firstName: searchRegex },
+        { lastName: searchRegex }
+      ];
+    }
+
+    // Get players with pagination
+    const [players, totalCount] = await Promise.all([
+      User.find(playerQuery)
+        .populate('team', 'name logo location division')
+        .select('firstName lastName profileImage position graduationYear team')
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort({ firstName: 1, lastName: 1 }),
+      User.countDocuments(playerQuery)
+    ]);
+
+    // Get existing conversations with these players
+    const playerIds = players.map(p => p._id);
+    const { Conversation } = await import("../../models/conversation.model.js");
+
+    const existingConversations = await Conversation.find({
+      coachId: coachId,
+      playerId: { $in: playerIds },
+      deletedFor: { $ne: coachId }
+    }).select('playerId _id');
+
+    // Create a map for quick lookup
+    const conversationMap = {};
+    existingConversations.forEach(convo => {
+      conversationMap[convo.playerId.toString()] = convo._id.toString();
+    });
+
+    // Format players with conversation info
+    const formattedPlayers = players.map(player => {
+      const playerObj = player.toObject();
+      return {
+        _id: playerObj._id,
+        firstName: playerObj.firstName,
+        lastName: playerObj.lastName,
+        profileImage: formatImageUrl(playerObj.profileImage, baseURL),
+        position: playerObj.position || null,
+        graduationYear: playerObj.graduationYear || null,
+        team: playerObj.team ? {
+          _id: playerObj.team._id,
+          name: playerObj.team.name,
+          logo: formatImageUrl(playerObj.team.logo, baseURL),
+          location: playerObj.team.location || null,
+          division: playerObj.team.division || null
+        } : null,
+        existingConversationId: conversationMap[playerObj._id.toString()] || null
+      };
+    });
+
+    res.json({
+      message: "Followed players for messaging retrieved successfully",
+      players: formattedPlayers,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        totalCount,
+        limit: parseInt(limit),
+        hasMore: skip + formattedPlayers.length < totalCount
+      }
+    });
+
+  } catch (error) {
+    console.error("Get Followed Players For Messaging Error:", error);
     res.status(500).json({ message: error.message });
   }
 };

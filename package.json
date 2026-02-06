@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed:masters": "node src/seeders/mastersSeeder.js",
-    "seed:teams": "node src/seeders/teamSeeder.js"
+    "seed:teams": "node src/seeders/teamSeeder.js",
+    "seed:regions": "node src/seeders/seedRegions.js"
   },
   "keywords": [],
   "author": "",

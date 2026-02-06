@@ -3,9 +3,11 @@ import Follow from "../../models/follow.model.js";
 import FollowTeam from "../../models/followTeam.model.js";
 import Team from "../../models/team.model.js";
 import VideoRequest from "../../models/videoRequest.model.js";
+import Region from "../../models/region.model.js";
 import mongoose from "mongoose";
 import { createAdminNotification } from "../../utils/adminNotification.js";
 import { formatUserDataUtility } from "../../utils/formatUserData.js";
+import { applyScoringLayer } from "../../utils/scoringLayer.js";
 
 // Helper to format user data
 const formatUserData = (user, baseURL) => {
@@ -756,6 +758,17 @@ export const getCoachDashboard = async (req, res) => {
       };
     }
 
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    const enrichedPlayers = applyScoringLayer(followedPlayersData.players, regionMap);
+
     // Get suggested profiles
     const suggestedPlayers = await User.find({role: "player", registrationStatus: "approved", isActive: true, _id: { $ne: coachId, $nin: followingList }}).populate('team', 'name logo location division').select("firstName lastName email position jerseyNumber profileImage profileCompleteness team").limit(10).sort({ profileCompleteness: -1, createdAt: -1 });
     const formattedSuggestions = suggestedPlayers.map(player => formatUserData(player, baseURL));
@@ -774,7 +787,7 @@ export const getCoachDashboard = async (req, res) => {
       },
       suggestions: formattedSuggestions,
       topPlayers: formattedTopPlayers,
-      followedPlayers: followedPlayersData.players,
+      followedPlayers: enrichedPlayers,
       pagination: followedPlayersData.pagination
     });
   } catch (error) {
@@ -1037,10 +1050,21 @@ export const getTopPlayers = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const formattedPlayers = topPlayers.map(player => formatUserDataUtility(player, baseURL));
 
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    const enrichedPlayers = applyScoringLayer(formattedPlayers, regionMap);
+
     res.json({
       message: "Top players retrieved successfully",
-      topPlayers: formattedPlayers,
-      totalPlayers: formattedPlayers.length
+      topPlayers: enrichedPlayers,
+      totalPlayers: enrichedPlayers.length
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1246,8 +1270,11 @@ export const requestMoreVideo = async (req, res) => {
 
     // Validate coach
     const coach = await User.findById(coachId);
-    if (!coach || coach.role !== "coach") {
-      return res.status(403).json({ message: "Only coaches can request videos" });
+    // if (!coach || coach.role !== "coach") {
+    //   return res.status(403).json({ message: "Only coaches can request videos" });
+    // }
+    if (!coach || !["coach", "scout"].includes(coach.role)) {
+      return res.status(403).json({ message: "Only coaches or scouts can request videos" });
     }
 
     // Validate player
@@ -1279,7 +1306,7 @@ export const requestMoreVideo = async (req, res) => {
     // Super Admin Notifications
     await createAdminNotification({
       title: "Video Request from Coach",
-      message: `${coach.firstName} ${coach.lastName} requested more video for ${player.getFullName()}.`,
+      message: `${coach.firstName} ${coach.lastName} (${coach.role}) requested more video for ${player.getFullName()}.`,
       type: "VIDEO_REQUEST",
       referenceId: request._id,
       createdBy: coachId
@@ -1302,8 +1329,11 @@ export const getVideoRequestsByPlayer = async (req, res) => {
   try {
     const { playerId } = req.params;
     // Role check (Coach only for now)
-    if (req.user.role !== "coach") {
-      return res.status(403).json({ message: "Coach access required" });
+    // if (req.user.role !== "coach") {
+    //   return res.status(403).json({ message: "Coach access required" });
+    // }
+    if (!["coach", "scout"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Coach or Scout access required" });
     }
     const BASE_URL = `${req.protocol}://${req.get("host")}`;
 

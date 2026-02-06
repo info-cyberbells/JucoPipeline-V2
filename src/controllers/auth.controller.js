@@ -14,6 +14,8 @@ import stripe, { SUBSCRIPTION_PLANS } from "../config/stripe.js";
 import { PAYPAL_SUBSCRIPTION_PLANS, paypalAPI } from "../config/paypal.config.js";
 import { createAdminNotification } from "../utils/adminNotification.js";
 import { formatUserDataUtility } from "../utils/formatUserData.js";
+import { applyScoringLayer } from "../utils/scoringLayer.js";
+import Region from "../models/region.model.js";
 
 // Helper function to generate base URL
 const getBaseURL = (req) => `${req.protocol}://${req.get("host")}`;
@@ -301,7 +303,7 @@ export const getTeams = async (req, res) => {
     const skip = (page - 1) * limit;
 
     // search param
-    const { teamName } = req.query;
+    const { teamName, state, region } = req.query;
 
     // build filter
     const filter = {};
@@ -309,14 +311,19 @@ export const getTeams = async (req, res) => {
       filter.name = { $regex: teamName, $options: "i" }; // case-insensitive search
     }
 
+    if (state) {
+      filter.state = { $regex: state, $options: "i" };
+    }
+
+    if (region) {
+      filter.region = { $regex: region, $options: "i" };
+    }
+
     // total teams count (with search)
     const totalTeams = await Team.countDocuments(filter);
 
     // paginated teams (with search)
-    const teams = await Team.find(filter)
-      .sort({ name: 1 }) // A-Z
-      .skip(skip)
-      .limit(limit);
+    const teams = await Team.find(filter).sort({ name: 1 }).skip(skip).limit(limit);
 
     // Get player count for each team
     const teamsWithCount = await Promise.all(
@@ -692,7 +699,20 @@ export const getPendingPlayers = async (req, res) => {
     const baseURL = getBaseURL(req);
     const formattedPlayers = players.map(p => formatUserData(p, baseURL));
 
-    res.json({ players: formattedPlayers });
+    const regions = await Region.find().lean();
+        const regionMap = {};
+        regions.forEach(r => {
+          regionMap[r.tier] = {
+            multiplier: r.multiplier,
+            strengthLevel: r.strengthLevel
+          };
+        });
+    
+        //apply scoring on SAME object
+        const enrichedPlayers = applyScoringLayer(formattedPlayers, regionMap);
+
+
+    res.json({ players: enrichedPlayers[0] });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1008,6 +1028,19 @@ export const login = async (req, res) => {
 
     const baseURL = getBaseURL(req);
     const userData = formatUserDataUtility(user, baseURL);
+
+    const regions = await Region.find().lean();
+        const regionMap = {};
+        regions.forEach(r => {
+          regionMap[r.tier] = {
+            multiplier: r.multiplier,
+            strengthLevel: r.strengthLevel
+          };
+        });
+    
+        //apply scoring on SAME object
+        const enrichedPlayers = applyScoringLayer([userData], regionMap);
+        Object.assign(userData, enrichedPlayers[0]);
 
     res.json({
       message: "Login successful",

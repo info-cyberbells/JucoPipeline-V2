@@ -4,6 +4,8 @@ import Game from "../models/game.model.js";
 import Follow from "../models/follow.model.js";
 import mongoose from "mongoose";
 import { formatUserDataUtility } from "../utils/formatUserData.js";
+import { applyScoringLayer } from "../utils/scoringLayer.js";
+import Region from "../models/region.model.js";
 
 // const normalizeSeasonYear = (year) => year?.split('-')[0];
 const normalizeSeasonYear = (year) => {
@@ -613,8 +615,20 @@ export const getTeamRoster = async (req, res) => {
 
     const followedSet = new Set(followedPlayers.map(id => id.toString()));
 
+     const regions = await Region.find().lean();
+        const regionMap = {};
+        regions.forEach(r => {
+          regionMap[r.tier] = {
+            multiplier: r.multiplier,
+            strengthLevel: r.strengthLevel
+          };
+        });
+
+    const enrichedPlayers = applyScoringLayer(players, regionMap);
+        
+        
     // Format players with team data
-    const formattedPlayers = players.map(player => {
+    const formattedPlayers = enrichedPlayers.map(player => {
       const playerData = formatUserDataUtility(player, baseURL);
       return {
         ...playerData,

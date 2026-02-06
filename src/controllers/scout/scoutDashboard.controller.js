@@ -2,6 +2,8 @@ import User from "../../models/user.model.js";
 import Follow from "../../models/follow.model.js";
 import mongoose from "mongoose";
 import { formatUserDataUtility } from "../../utils/formatUserData.js";
+import { applyScoringLayer } from "../../utils/scoringLayer.js";
+import Region from "../../models/region.model.js";
 
 // Helper to format user data
 const formatUserData = (user, baseURL) => {
@@ -768,10 +770,21 @@ export const getScoutDashboard = async (req, res) => {
     // Combine all data
     const scoutData = formatUserData(scout, baseURL);
 
+    const regions = await Region.find().lean();
+      const regionMap = {};
+      regions.forEach(r => {
+        regionMap[r.tier] = {
+          multiplier: r.multiplier,
+          strengthLevel: r.strengthLevel
+        };
+      });
+  
+      const enrichedPlayers = applyScoringLayer(scoutData.players, regionMap);
+
     res.json({
       message: "Scout dashboard retrieved successfully",
       scout: {
-        ...scoutData,
+        ...enrichedPlayers,
         followersCount,
         followingCount
       },
@@ -1049,10 +1062,21 @@ export const getTopPlayers = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const formattedPlayers = topPlayers.map(player => formatUserDataUtility(player, baseURL));
 
+    const regions = await Region.find().lean();
+        const regionMap = {};
+        regions.forEach(r => {
+          regionMap[r.tier] = {
+            multiplier: r.multiplier,
+            strengthLevel: r.strengthLevel
+          };
+        });
+    
+        const enrichedPlayers = applyScoringLayer(formattedPlayers, regionMap);
+
     res.json({
       message: "Top players retrieved successfully",
-      topPlayers: formattedPlayers,
-      totalPlayers: formattedPlayers.length
+      topPlayers: enrichedPlayers,
+      totalPlayers: enrichedPlayers.length
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

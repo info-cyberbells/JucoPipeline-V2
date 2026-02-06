@@ -5,22 +5,24 @@ import { generateSuperStrongPassword } from "../../utils/passwordGenerator.js";
 import Notification from "../../models/notification.model.js";
 import AdminNotificationSetting from "../../models/adminNotificationSetting.model.js";
 import { formatUserDataUtility } from "../../utils/formatUserData.js";
+import { applyScoringLayer } from "../../utils/scoringLayer.js";
+import Region from "../../models/region.model.js";
 
 // Helper to format user data with full URLs
 const formatUserData = (user, baseURL) => {
   const userData = user.toObject();
-  
+
   if (userData.profileImage && !userData.profileImage.startsWith("http")) {
     userData.profileImage = `${baseURL}${userData.profileImage}`;
   }
-  
+
   if (userData.photoIdDocuments && userData.photoIdDocuments.length > 0) {
     userData.photoIdDocuments = userData.photoIdDocuments.map(doc => ({
       ...doc,
       documentUrl: doc.documentUrl.startsWith("http") ? doc.documentUrl : `${baseURL}${doc.documentUrl}`
     }));
   }
-  
+
   delete userData.password;
   return userData;
 };
@@ -30,16 +32,16 @@ const formatUserData = (user, baseURL) => {
 // Get all pending approvals
 export const getPendingApprovalsOLDWITHOUTCOUNTKEY = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      sortBy = "createdAt", 
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
       sortOrder = "desc",
-      role 
+      role
     } = req.query;
 
     const filter = { registrationStatus: "pending" };
-    
+
     // Filter by role if provided
     if (role && role !== "all") {
       filter.role = role;
@@ -78,7 +80,7 @@ export const getPendingApprovalsOLDWITHOUTCOUNTKEY = async (req, res) => {
 
 export const getPendingApprovals = async (req, res) => {
   try {
-    const { page = 1, limit = 10,  sortBy = "createdAt",  sortOrder = "desc", role } = req.query;
+    const { page = 1, limit = 10, sortBy = "createdAt", sortOrder = "desc", role } = req.query;
     const filter = { registrationStatus: "pending" };
     if (role && role !== "all") {
       filter.role = role;
@@ -86,14 +88,14 @@ export const getPendingApprovals = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
-    const [ pendingUsers, totalPendingCount, totalUsers, totalPlayers, totalCoaches, totalScouts, totalPendingPlayers] = await Promise.all([User.find(filter).populate("team", "name").select("firstName lastName email role team phoneNumber createdAt registrationStatus profileImage").sort(sortOptions).skip(skip).limit(parseInt(limit)),
-      User.countDocuments(filter),
-      // Counts
-      User.countDocuments({ role: { $in: ["player", "coach", "scout"] } }),
-      User.countDocuments({ role: "player" }),
-      User.countDocuments({ role: "coach" }),
-      User.countDocuments({ role: "scout" }),
-      User.countDocuments({ role: "player", registrationStatus: "pending" })
+    const [pendingUsers, totalPendingCount, totalUsers, totalPlayers, totalCoaches, totalScouts, totalPendingPlayers] = await Promise.all([User.find(filter).populate("team", "name").select("firstName lastName email role team phoneNumber createdAt registrationStatus profileImage").sort(sortOptions).skip(skip).limit(parseInt(limit)),
+    User.countDocuments(filter),
+    // Counts
+    User.countDocuments({ role: { $in: ["player", "coach", "scout"] } }),
+    User.countDocuments({ role: "player" }),
+    User.countDocuments({ role: "coach" }),
+    User.countDocuments({ role: "scout" }),
+    User.countDocuments({ role: "player", registrationStatus: "pending" })
     ]);
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
@@ -136,17 +138,28 @@ export const getUserDetails = async (req, res) => {
     const { userId } = req.params;
 
     const user = await User.findById(userId).populate("team", "name").select("-password");
-    
+
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const userData = formatUserDataUtility(user, baseURL);
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([userData], regionMap);
 
     res.json({
       message: "User details retrieved successfully",
-      user: userData
+      user: enrichedPlayers.length > 0 ? enrichedPlayers[0] : userData
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -158,7 +171,7 @@ export const approveUserOLDDDFUNCATION = async (req, res) => {
   try {
     const { userId } = req.params;
     const adminId = req.user.id;
-    
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(400).json({ message: "User not found" });
@@ -193,7 +206,7 @@ export const approveUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const adminId = req.user.id;
-    
+
     // Find user
     const user = await User.findById(userId);
     if (!user) {
@@ -207,8 +220,8 @@ export const approveUser = async (req, res) => {
 
     // Check if user has email
     if (!user.email) {
-      return res.status(400).json({ 
-        message: "Cannot approve user without email address" 
+      return res.status(400).json({
+        message: "Cannot approve user without email address"
       });
     }
 
@@ -255,7 +268,7 @@ export const rejectUserOLLDDDDD = async (req, res) => {
     const { reason } = req.body;
 
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
@@ -289,7 +302,7 @@ export const rejectUser = async (req, res) => {
     const { userId } = req.params;
     const { reason } = req.body;
     const adminId = req.user.id;
-    
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(400).json({ message: "User not found" });
@@ -304,7 +317,7 @@ export const rejectUser = async (req, res) => {
     user.rejectionReason = reason || "Not specified";
     user.approvedBy = adminId; // Track who rejected
     user.approvedAt = new Date();
-    
+
     await user.save();
 
     // Send rejection email if user has email
@@ -361,7 +374,7 @@ export const getVideoRequestsOLDD = async (req, res) => {
     if (req.user.role !== "superAdmin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    
+
     const requests = await VideoRequest.find()
       .populate("player", "firstName lastName email phoneNumber profileImage")
       .populate("requestedBy", "firstName lastName email phoneNumber profileImage")

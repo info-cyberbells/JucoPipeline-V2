@@ -69,6 +69,8 @@ router.get("/get-users-by-roles", getAllUsersByRole);
 
 router.get("/video-requests", getVideoRequests);   
 router.patch("/video-request/:id", updateVideoRequestStatus);
+
+
 router.get("/notifications", getAdminNotifications);
 router.get("/notification-settings", getAdminNotificationSettings);
 router.patch("/notification-settings", updateAdminNotificationSettings);

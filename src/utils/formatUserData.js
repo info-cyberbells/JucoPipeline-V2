@@ -107,7 +107,7 @@ export const formatUserDataUtility = (userDoc, baseURL) => {
 
     user.region = basic.region || null;
     user.velo = basic.velo || null;
-    user.whip = basic.whip || null;
+    // user.whip = basic.whip || null;
     user.player_bio = basic.player_bio || null;
     user.awards_honors = basic.awards_honors || null;
     user.strengths = basic.strengths || [];
@@ -119,7 +119,7 @@ export const formatUserDataUtility = (userDoc, baseURL) => {
 
     user.ncaaId = basic.ncaaId || null;
     user.playerScore = basic.playerScore || null;
-    user.jpRank = basic.jpRank || null;
+    // user.jpRank = basic.jpRank || null;
     user.conferenceStrengthScore = basic.conferenceStrengthScore || null;
     user.transferStatus = basic.transferStatus || [];
 

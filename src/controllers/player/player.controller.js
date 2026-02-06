@@ -7,6 +7,8 @@ import path from "path";
 import mongoose from "mongoose";
 import { getVideoDuration } from "../../utils/videoProcessor.js";
 import { formatUserDataUtility } from "../../utils/formatUserData.js";
+import { applyScoringLayer } from "../../utils/scoringLayer.js";
+import Region from "../../models/region.model.js";
 
 // Helper function to calculate profile completeness
 const calculateProfileCompleteness = (player) => {
@@ -155,9 +157,21 @@ export const getPlayerProfile = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
 
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+
     res.json({
       message: "Player profile retrieved successfully",
-      player: playerData
+      player: enrichedPlayers[0]
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -335,6 +349,18 @@ export const updatePlayerProfile = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
 
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
     res.json({
       message: "Profile updated successfully",
       player: playerData
@@ -403,6 +429,18 @@ export const uploadPlayerVideos = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
 
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
     res.json({
       message: "Videos uploaded successfully",
       player: playerData
@@ -468,6 +506,20 @@ export const deletePlayerVideo = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
 
+
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
+
     res.json({
       message: "Video deleted successfully",
       player: playerData
@@ -521,6 +573,18 @@ export const uploadCoachRecommendation = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Coach recommendation uploaded successfully",
@@ -566,6 +630,19 @@ export const deleteCoachRecommendation = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Coach recommendation deleted successfully",
@@ -615,6 +692,18 @@ export const uploadAcademicInfo = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "AcademicInfo uploaded successfully",
@@ -654,6 +743,19 @@ export const deleteAcademicInfo = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap); 
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "AcademicInfo deleted successfully",
@@ -728,6 +830,18 @@ export const addAward = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Award added successfully",
@@ -799,6 +913,19 @@ export const removeAward = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap); 
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Award removed successfully",
@@ -875,6 +1002,18 @@ export const addStrength = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Strength added successfully",
@@ -944,6 +1083,19 @@ export const removeStrength = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+    
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Strength removed successfully",
@@ -993,6 +1145,19 @@ export const updatePlayerProfileImage = async (req, res) => {
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
 
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
+
     res.json({
       message: "Profile image updated successfully",
       player: playerData
@@ -1036,6 +1201,19 @@ export const deletePlayerProfileImage = async (req, res) => {
 
     const baseURL = `${req.protocol}://${req.get("host")}`;
     const playerData = formatUserDataUtility(player, baseURL);
+
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([playerData], regionMap);
+    Object.assign(playerData, enrichedPlayers[0]);
 
     res.json({
       message: "Profile image deleted successfully",
@@ -1090,6 +1268,18 @@ export const getPlayerById = async (req, res) => {
     }
 
     const formattedData = formatUserDataUtility(playerData, baseURL);
+    const regions = await Region.find().lean();
+    const regionMap = {};
+    regions.forEach(r => {
+      regionMap[r.tier] = {
+        multiplier: r.multiplier,
+        strengthLevel: r.strengthLevel
+      };
+    });
+
+    //apply scoring on SAME object
+    const enrichedPlayers = applyScoringLayer([formattedData], regionMap);
+    Object.assign(formattedData, enrichedPlayers[0]);
 
     // Format coach recommendation
     // if (playerData.coachRecommendation?.url && !playerData.coachRecommendation.url.startsWith("http")) {

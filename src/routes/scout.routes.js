@@ -10,6 +10,7 @@ import { getAllTeams, getTeamRoster } from "../controllers/teams.controller.js";
 import { getCoachStatistics } from "../controllers/coach/statistics.controller.js";
 import { saveFilter, getMyFilters, deleteFilter } from "../controllers/coach/savedFilter.controller.js";
 import { getAllGames, getGameById } from "../controllers/superAdmin/game.controller.js";
+import { requestMoreVideo, getVideoRequestsByPlayer } from "../controllers/coach/coachDashboard.controller.js";
 
 const router = express.Router();
 router.use(authenticate, authorizeRoles("scout"));
@@ -58,5 +59,8 @@ router.delete("/delete-filter/:id", deleteFilter);
 // Games
 router.get("/games", getAllGames);
 router.get("/game/:gameId", getGameById);
+
+router.post("/video-request", requestMoreVideo);
+router.get("/video-request/player/:playerId", getVideoRequestsByPlayer);
 
 export default router;

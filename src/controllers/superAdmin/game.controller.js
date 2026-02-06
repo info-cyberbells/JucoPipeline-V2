@@ -44,6 +44,20 @@ export const createGame = async (req, res) => {
       }
     }
 
+    // Ensure both teams are provided
+    if (!homeTeamId || !awayTeamId) {
+      return res.status(400).json({ 
+        message: "Both homeTeamId and awayTeamId are required" 
+      });
+    }
+
+    // Prevent same team matchup
+    if (homeTeamId === awayTeamId) {
+      return res.status(400).json({ 
+        message: "Home team and Away team cannot be the same" 
+      });
+    }
+
     const game = await Game.create({
       homeTeamId,
       awayTeamId,

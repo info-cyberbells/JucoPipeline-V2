@@ -4,7 +4,7 @@ import { authenticate } from "../middleware/auth.middleware.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
 
 const router = express.Router();
-router.use(authenticate, authorizeRoles("coach","scout"));
+router.use(authenticate, authorizeRoles("coach","scout", "player"));
 
 router.post("/start", startConversation);
 router.get("/", getMyConversations);

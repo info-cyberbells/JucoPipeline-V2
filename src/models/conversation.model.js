@@ -43,8 +43,23 @@ const conversationSchema = new mongoose.Schema(
       default: false
     },
     lastMessage: {
-      text: String,
-      senderId: mongoose.Schema.Types.ObjectId,
+      text: { type: String, default: "" },
+      messageType: {
+        type: String,
+        enum: ["text", "image", "file"],
+        default: "text"
+      },
+      file: {
+        name: String
+      },
+      senderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      },
+      senderRole: {
+        type: String,
+        enum: ["coach", "player", "scout"]
+      },
       createdAt: Date
     },
     deletedFor: [{

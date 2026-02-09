@@ -1,21 +1,7 @@
 import { Message } from "../models/message.model.js";
 import { Conversation } from "../models/conversation.model.js";
-
-export const getMessagesOLD = async (req, res) => {
-    const { conversationId } = req.params;
-    const userId = req.user._id;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
-
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation || !conversation.isParticipant(userId)) {
-        return res.status(403).json({ message: "Access denied" });
-    }
-
-    const messages = await Message.find({ conversationId }).sort({ createdAt: -1 }).skip(skip).limit(limit);
-    res.json(messages.reverse());
-};
+import fs from "fs";
+import path from "path";
 
 export const getMessages = async (req, res) => {
     const { conversationId } = req.params;
@@ -46,7 +32,15 @@ export const getMessages = async (req, res) => {
         text: msg.text,
         isRead: msg.isRead,
         createdAt: msg.createdAt,
-
+         file: msg.fileUrl
+        ? {
+            url: msg.fileUrl.startsWith("http")
+                ? msg.fileUrl
+                : `${baseURL}/${msg.fileUrl.replace(/\\/g, "/")}`,
+            name: msg.fileName,
+            size: msg.fileSize
+        }
+        : null,
         sender: {
             _id: msg.senderId._id,
             firstName: msg.senderId.firstName,
@@ -65,63 +59,32 @@ export const getMessages = async (req, res) => {
     res.json(formatted);
 };
 
-export const sendMessageOLDDDD = async (req, res) => {
-    const { conversationId, text } = req.body;
-    const user = req.user;
+export const sendMessage = async (req, res) => {
+    const conversationId = req.body?.conversationId;
+    const text = req.body?.text || "";
 
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation || !conversation.isParticipant(user._id)) {
-        return res.status(403).json({ message: "Not allowed" });
-    }
-
-    // Player restriction
-    if (user.role === "player" && !conversation.isUnlocked) {
-        return res.status(403).json({
-            message: "Player cannot send message until coach initiates"
+    if (!conversationId) {
+        return res.status(400).json({
+            message: "conversationId is required"
         });
     }
 
-    const receiver = conversation.getOtherParticipant(user._id);
-    const message = await Message.create({
-        conversationId,
-        senderId: user._id,
-        senderRole: user.role,
-        receiverId: receiver.userId,
-        text
-    });
+    let messageType = "text";
+    let fileData = {};
 
-    conversation.lastMessage = {
-        text,
-        senderId: user._id,
-        createdAt: message.createdAt
-    };
+    if (req.file) {
+        const baseURL = `${req.protocol}://${req.get("host")}`;
 
-    await conversation.save();
+        fileData = {
+            fileUrl: `${baseURL}/${req.file.path.replace(/\\/g, "/")}`,
+            fileName: req.file.originalname,
+            fileSize: req.file.size
+        };
+        messageType = req.file.mimetype.startsWith("image/") ? "image" : "file";
+    }
 
-    const io = req.app.get("io");
-    const receiverUser = conversation.participants.find(
-        p => p.userId.toString() !== req.user._id.toString()
-    );
 
-    const receiverRoom = `user_${receiverUser.userId.toString()}`;
-    console.log("Emitting to room:", receiverRoom);
-    io.to(receiverRoom).emit("newMessage", {
-        conversationId: conversation._id,
-        message: message
-    });
-
-    io.to(receiverRoom).emit("unreadUpdate", {
-        conversationId: conversation._id
-    });
-
-    res.status(201).json(message);
-};
-
-export const sendMessage = async (req, res) => {
-    const { conversationId, text } = req.body;
     const user = req.user;
-    const baseURL = `${req.protocol}://${req.get("host")}`;
-
     const conversation = await Conversation.findById(conversationId).populate(
         "participants.userId",
         "firstName profileImage role"
@@ -146,12 +109,17 @@ export const sendMessage = async (req, res) => {
         senderId: user._id,
         senderRole: user.role,
         receiverId: receiverParticipant.userId._id,
-        text
+        text,
+        messageType,
+        ...fileData
     });
 
     conversation.lastMessage = {
-        text,
+        text: messageType === "text" ? text : "",
+        messageType,
+        file: fileData.fileName ? { name: fileData.fileName } : null,
         senderId: user._id,
+        senderRole: user.role,
         createdAt: message.createdAt
     };
 
@@ -178,6 +146,13 @@ export const sendMessage = async (req, res) => {
         messageType: populatedMessage.messageType,
         createdAt: populatedMessage.createdAt,
         isRead: populatedMessage.isRead,
+        file: populatedMessage.fileUrl
+            ? {
+                url: populatedMessage.fileUrl,
+                name: populatedMessage.fileName,
+                size: populatedMessage.fileSize
+            }
+            : null,
 
         sender: {
             _id: populatedMessage.senderId._id,
@@ -209,22 +184,6 @@ export const sendMessage = async (req, res) => {
     res.status(201).json(formattedMessage);
 };
 
-export const markAsReadOLDDSS = async (req, res) => {
-    const { conversationId } = req.body;
-    const userId = req.user._id;
-
-    await Message.updateMany(
-        {
-            conversationId,
-            receiverId: userId,
-            isRead: false
-        },
-        { $set: { isRead: true } }
-    );
-
-    res.json({ success: true });
-};
-
 export const markAsRead = async (req, res) => {
     const { conversationId } = req.body;
     const userId = req.user._id;
@@ -253,7 +212,6 @@ export const markAsRead = async (req, res) => {
     res.json({ success: true });
 };
 
-
 export const deleteMessage = async (req, res) => {
     try {
         const userId = req.user._id;
@@ -261,21 +219,45 @@ export const deleteMessage = async (req, res) => {
         const io = req.app.get("io");
 
         const message = await Message.findById(messageId);
-        if (!message) return res.status(404).json({ message: "Message not found" });
+        if (!message) {
+            return res.status(404).json({ message: "Message not found" });
+        }
 
         // Only sender can delete
         if (message.senderId.toString() !== userId.toString()) {
             return res.status(403).json({ message: "Not allowed" });
         }
 
+        // ===== Delete file from disk if exists =====
+        if (message.fileUrl) {
+            try {
+                // Convert URL to local path
+                const filePath = message.fileUrl
+                    .replace(`${req.protocol}://${req.get("host")}/`, "");
+
+                const fullPath = path.join(process.cwd(), filePath);
+
+                if (fs.existsSync(fullPath)) {
+                    fs.unlinkSync(fullPath);
+                    console.log("🗑 File deleted:", fullPath);
+                }
+            } catch (fileErr) {
+                console.error("File delete error:", fileErr.message);
+                // Don't stop execution if file delete fails
+            }
+        }
+
+        // Delete message from DB
         await message.deleteOne();
 
+        // Real-time event
         io.to(`user_${message.receiverId}`).emit("messageDeleted", {
             messageId,
             chatId: message.conversationId
         });
 
         res.json({ success: true });
+
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

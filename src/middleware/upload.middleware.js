@@ -94,6 +94,26 @@ const csvFilter = (req, file, cb) => {
   cb(new Error("Only CSV files are allowed"));
 };
 
+// ============= MESSAGE FILE FILTER (Images + Docs) =============
+const messageFileFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|gif|webp|pdf|doc|docx|xls|xlsx|txt|zip/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+
+  const allowedMime =
+    file.mimetype.startsWith("image/") ||
+    file.mimetype === "application/pdf" ||
+    file.mimetype.includes("word") ||
+    file.mimetype.includes("excel") ||
+    file.mimetype === "text/plain" ||
+    file.mimetype === "application/zip";
+
+  if (extname && allowedMime) {
+    return cb(null, true);
+  }
+
+  cb(new Error("Unsupported file type for messages"));
+};
+
 // ============= MULTER INSTANCES =============
 
 // General upload (images + PDFs) - for auth registration, photo IDs
@@ -130,6 +150,14 @@ export const uploadCSV = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: csvFilter,
 });
+
+// Message uploads (images + documents)
+export const uploadMessageFile = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: messageFileFilter,
+});
+
 
 // ============= EXPORT DEFAULT FOR BACKWARD COMPATIBILITY =============
 export default uploadFiles;

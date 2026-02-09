@@ -3,86 +3,11 @@ import { Conversation } from "../models/conversation.model.js";
 import { Message } from "../models/message.model.js";
 import User from "../models/user.model.js";
 
-export const startConversationCoachOnly = async (req, res) => {
-    try {
-        const coachId = req.user._id;
-        const { playerId, text } = req.body;
-        const baseURL = `${req.protocol}://${req.get("host")}`;
-
-        if (req.user.role !== "coach") {
-            return res.status(403).json({ message: "Only coach can start conversation" });
-        }
-
-        // Check existing conversation
-        let conversation = await Conversation.findOne({
-            "participants.userId": { $all: [coachId, playerId] }
-        });
-
-        if (!conversation) {
-            conversation = await Conversation.create({
-                coachId: coachId,
-                playerId: playerId,
-                participants: [
-                    { userId: coachId, role: "coach" },
-                    { userId: playerId, role: "player" }
-                ],
-                initiatedBy: {
-                    userId: coachId,
-                    role: "coach"
-                },
-                isUnlocked: true
-            });
-        }
-
-        const message = await Message.create({
-            conversationId: conversation._id,
-            senderId: coachId,
-            senderRole: "coach",
-            receiverId: playerId,
-            text
-        });
-
-        conversation.lastMessage = {
-            text,
-            senderId: coachId,
-            createdAt: message.createdAt
-        };
-
-        await conversation.save();
-
-        // Fetch player basic info
-        const player = await User.findById(playerId).select(
-            "firstName lastName profileImage"
-        );
-
-        const participant = {
-            _id: player._id,
-            firstName: player.firstName,
-            lastName: player.lastName,
-            profileImage: player.profileImage ? `${baseURL}${player.profileImage}` : null
-        };
-
-        // res.status(201).json({ conversation, message });
-
-        res.status(201).json({
-            conversation: {
-                ...conversation.toObject(),
-                participant,
-                unreadCount: 0
-            },
-            message
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-};
-
 export const startConversation = async (req, res) => {
     try {
         const initiatorId = req.user._id;
         const initiatorRole = req.user.role; // coach | scout
-        const { playerId, text } = req.body;
+        const { playerId, text, messageType = "text" } = req.body;
         const baseURL = `${req.protocol}://${req.get("host")}`;
 
         // Allow only coach or scout
@@ -115,23 +40,34 @@ export const startConversation = async (req, res) => {
             });
         }
 
-        // Create message
+        let fileData = null;
+        if (req.file) {
+            fileData = {
+                name: req.file.originalname,
+                url: `${baseURL}/uploads/${req.file.filename}`
+            };
+        }
+
         const message = await Message.create({
             conversationId: conversation._id,
             senderId: initiatorId,
             senderRole: initiatorRole,
             receiverId: playerId,
-            text
+            text,
+            messageType,
+            fileUrl: fileData?.url,
+            fileName: fileData?.name
         });
 
-        // Update last message
         conversation.lastMessage = {
-            text,
+            text: messageType === "text" ? text : "",
+            messageType,
+            file: message.fileName ? { name: message.fileName } : null,
             senderId: initiatorId,
             senderRole: initiatorRole,
             createdAt: message.createdAt
         };
-
+        
         await conversation.save();
 
         // Fetch player basic info
@@ -162,108 +98,6 @@ export const startConversation = async (req, res) => {
             message: err.message
         });
     }
-};
-
-
-export const startConversationOLLLD = async (req, res) => {
-    try {
-        const coachId = req.user._id;
-        const { playerId, text } = req.body;
-
-        if (req.user.role !== "coach") {
-            return res.status(403).json({ message: "Only coach can start conversation" });
-        }
-
-        // Check existing conversation
-        let conversation = await Conversation.findOne({
-            "participants.userId": { $all: [coachId, playerId] }
-        });
-
-        if (!conversation) {
-            conversation = await Conversation.create({
-                coachId: coachId,
-                playerId: playerId,
-                participants: [
-                    { userId: coachId, role: "coach" },
-                    { userId: playerId, role: "player" }
-                ],
-                initiatedBy: {
-                    userId: coachId,
-                    role: "coach"
-                },
-                isUnlocked: true
-            });
-        }
-
-        const message = await Message.create({
-            conversationId: conversation._id,
-            senderId: coachId,
-            senderRole: "coach",
-            receiverId: playerId,
-            text
-        });
-
-        conversation.lastMessage = {
-            text,
-            senderId: coachId,
-            createdAt: message.createdAt
-        };
-
-        await conversation.save();
-
-        res.status(201).json({ conversation, message });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-};
-
-export const getMyConversationsOLDD = async (req, res) => {
-    const userId = new mongoose.Types.ObjectId(req.user._id);
-    const conversations = await Conversation.aggregate([
-        {
-            $match: {
-                "participants.userId": userId
-            }
-        },
-        {
-            $lookup: {
-                from: "messages",
-                let: { conversationId: "$_id" },
-                pipeline: [
-                    {
-                        $match: {
-                            $expr: {
-                                $and: [
-                                    { $eq: ["$conversationId", "$$conversationId"] },
-                                    { $eq: ["$receiverId", userId] },
-                                    { $eq: ["$isRead", false] }
-                                ]
-                            }
-                        }
-                    },
-                    { $count: "count" }
-                ],
-                as: "unreadMessages"
-            }
-        },
-        {
-            $addFields: {
-                unreadCount: {
-                    $ifNull: [{ $arrayElemAt: ["$unreadMessages.count", 0] }, 0]
-                }
-            }
-        },
-        {
-            $project: {
-                unreadMessages: 0
-            }
-        },
-        {
-            $sort: { updatedAt: -1 }
-        }
-    ]);
-
-    res.json(conversations);
 };
 
 export const getMyConversations = async (req, res) => {
@@ -375,33 +209,6 @@ export const getMyConversations = async (req, res) => {
     res.json(conversations);
 };
 
-export const deleteConversationsOLDDD = async (req, res) => {
-    try {
-        const userId = req.user._id;
-        const { conversationIds } = req.body;
-
-        if (!Array.isArray(conversationIds) || conversationIds.length === 0) {
-            return res.status(400).json({ message: "conversationIds array is required" });
-        }
-
-        await Conversation.updateMany(
-            {
-                _id: { $in: conversationIds },
-                "participants.userId": userId
-            },
-            {
-                $addToSet: { deletedFor: userId }
-            }
-        );
-
-        res.json({ success: true, message: "Conversations deleted." });
-
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-};
-
-// Real-Time Conversation Delete Event
 export const deleteConversations = async (req, res) => {
     try {
         const userId = req.user._id;

@@ -32,6 +32,9 @@ const messageSchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    fileUrl: {type: String},
+    fileName: {type: String},
+    fileSize: {type: Number},
     isRead: {
       type: Boolean,
       default: false,

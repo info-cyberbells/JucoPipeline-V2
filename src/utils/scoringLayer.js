@@ -33,11 +33,28 @@ export function applyScoringLayer(players = [], regionMap = {}) {
         (player.battingStats || []).forEach(stat => {
             if (stat.at_bats >= 75) {
                 hitters.push({ player, stat });
+            } else {
+                stat.finalScore = null;
+                stat.jpRank = null;
             }
         });
     });
     
-    if (!hitters.length) return players;
+    // if (!hitters.length) return players;
+    if (!hitters.length) {
+        // Still calculate WHIP before returning
+        players.forEach(player => {
+            (player.pitchingStats || []).forEach(p => {
+                const BB = p.walks_allowed || 0;
+                const H = p.hits_allowed || 0;
+                const IP = p.innings_pitched || 0;
+
+                p.whip = IP > 0 ? +((BB + H) / IP).toFixed(2) : null;
+            });
+        });
+
+        return players;
+    }
 
     /* -----------------------------
        STEP 2: Calculate derived stats
@@ -155,7 +172,8 @@ export function applyScoringLayer(players = [], regionMap = {}) {
     // Non-eligible hitters (AB < 75)
     players.forEach(player => {
         (player.battingStats || []).forEach(stat => {
-            if (!stat.finalScore) {
+            if (stat.finalScore === undefined) {
+                stat.finalScore = null;
                 stat.jpRank = null;
             }
         });
@@ -170,7 +188,7 @@ export function applyScoringLayer(players = [], regionMap = {}) {
             const H = p.hits_allowed || 0;
             const IP = p.innings_pitched || 0;
 
-            p.whip = IP > 0 ? +((BB + H) / IP).toFixed(2) : 1.0;
+            p.whip = IP > 0 ? +((BB + H) / IP).toFixed(2) : null;
         });
     });
 

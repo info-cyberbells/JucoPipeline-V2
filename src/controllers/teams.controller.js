@@ -589,8 +589,157 @@ export const getTeamRoster = async (req, res) => {
 
     const dataPipeline = [...pipeline];
 
+    // === SORTING LOGIC ===
+    // Helper: safely convert any value (string/Decimal128/number) to double
+    const toNumeric = (expr) => ({
+      $convert: { input: expr, to: "double", onError: 0, onNull: 0 }
+    });
+
+    const battingSortFields = new Set([
+      'batting_average', 'on_base_percentage', 'slugging_percentage', 'home_runs',
+      'rbi', 'hits', 'runs', 'doubles', 'triples', 'walks', 'strikeouts',
+      'stolen_bases', 'total_bases', 'on_base_plus_slugging', 'caught_stealing',
+      'at_bats', 'hit_by_pitch', 'sacrifice_flies', 'sacrifice_hits',
+      'games_played', 'games_started', 'grounded_into_double_play',
+      'walk_percentage', 'strikeout_percentage', 'intentional_walks',
+      'stolen_bases_against', 'finalScore'
+    ]);
+
+    const pitchingSortFields = new Set([
+      'era', 'wins', 'losses', 'strikeouts_pitched', 'innings_pitched',
+      'walks_allowed', 'hits_allowed', 'saves', 'appearances', 'doubles_allowed',
+      'home_runs_allowed', 'complete_games', 'earned_runs',
+      'batting_average_against', 'wild_pitches', 'games_pitched', 'shutouts',
+      'runs_allowed', 'triples_allowed', 'at_bats_against', 'hit_batters',
+      'balks', 'sacrifice_flies_allowed', 'sacrifice_hits_allowed',
+      'batting_average_allowed', 'WHIP'
+    ]);
+
+    const fieldingSortFields = new Set([
+      'fielding_percentage', 'errors', 'putouts', 'assists', 'double_plays',
+      'total_chances', 'passed_balls', 'stolen_bases_allowed',
+      'runners_caught_stealing_percentage', 'runners_caught_stealing',
+      'catcher_interference', 'fielding_games', 'stolen_base_success_rate',
+      'caught_stealing_by_catcher', 'stolen_base_attempt_percentage',
+      'f_stolen_bases_against'
+    ]);
+
+    const seasonInfoStringFields = new Set(['position', 'primaryPosition', 'playerClass']);
+
+    let actualSortField = sortBy;
+
+    if (sortBy === 'height') {
+      // Height is stored as string like "6'2", "6-2", "6' 2" → convert to total inches
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: {
+            $let: {
+              vars: {
+                h: { $ifNull: ["$currentSeasonInfo.height", { $ifNull: ["$height", ""] }] }
+              },
+              in: {
+                $cond: {
+                  if: { $or: [{ $eq: ["$$h", ""] }, { $eq: ["$$h", null] }] },
+                  then: 0,
+                  else: {
+                    $let: {
+                      vars: {
+                        // Normalize: "6'2\"" or "6' 2" or "6-2" → "6-2"
+                        normalized: {
+                          $replaceAll: {
+                            input: {
+                              $replaceAll: {
+                                input: {
+                                  $replaceAll: {
+                                    input: { $toString: "$$h" },
+                                    find: "\"", replacement: ""
+                                  }
+                                },
+                                find: "'", replacement: "-"
+                              }
+                            },
+                            find: " ", replacement: ""
+                          }
+                        }
+                      },
+                      in: {
+                        $let: {
+                          vars: { parts: { $split: ["$$normalized", "-"] } },
+                          in: {
+                            $add: [
+                              { $multiply: [
+                                { $convert: { input: { $arrayElemAt: ["$$parts", 0] }, to: "int", onError: 0, onNull: 0 } },
+                                12
+                              ] },
+                              { $convert: { input: { $arrayElemAt: ["$$parts", 1] }, to: "int", onError: 0, onNull: 0 } }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      actualSortField = '_sortValue';
+    } else if (sortBy === 'weight') {
+      // Weight stored as string "185" → convert to number
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: toNumeric({ $ifNull: ["$currentSeasonInfo.weight", { $ifNull: ["$weight", "0"] }] })
+        }
+      });
+      actualSortField = '_sortValue';
+    } else if (sortBy === 'jerseyNumber') {
+      // Jersey number stored as string "24" → convert to number
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: toNumeric({ $ifNull: ["$currentSeasonInfo.jerseyNumber", { $ifNull: ["$jerseyNumber", "0"] }] })
+        }
+      });
+      actualSortField = '_sortValue';
+    } else if (seasonInfoStringFields.has(sortBy)) {
+      // String fields from playerBasicInfo (position, playerClass) - sort as string
+      const dbField = sortBy === 'primaryPosition' ? 'position' : sortBy;
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: {
+            $toLower: { $ifNull: [`$currentSeasonInfo.${dbField}`, ""] }
+          }
+        }
+      });
+      actualSortField = '_sortValue';
+    } else if (battingSortFields.has(sortBy)) {
+      // Batting stats - convert to double for safe numeric sort (handles Decimal128/string)
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: toNumeric({ $arrayElemAt: [`$battingStats.${sortBy}`, 0] })
+        }
+      });
+      actualSortField = '_sortValue';
+    } else if (pitchingSortFields.has(sortBy)) {
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: toNumeric({ $arrayElemAt: [`$pitchingStats.${sortBy}`, 0] })
+        }
+      });
+      actualSortField = '_sortValue';
+    } else if (fieldingSortFields.has(sortBy)) {
+      const dbField = sortBy.startsWith('f_') ? sortBy.slice(2) : sortBy;
+      dataPipeline.push({
+        $addFields: {
+          _sortValue: toNumeric({ $arrayElemAt: [`$fieldingStats.${dbField}`, 0] })
+        }
+      });
+      actualSortField = '_sortValue';
+    }
+    // else: top-level string fields (firstName, lastName, batsThrows) - sort directly as-is
+
     dataPipeline.push(
-      { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
+      { $sort: { [actualSortField]: sortOrder === "asc" ? 1 : -1 } },
       { $skip: skip },
       { $limit: parseInt(limit) }
     );

@@ -1951,6 +1951,8 @@ export const getUncommittedPLayer = async (req, res) => {
       position,
       region,
       conference,
+      sortBy,
+      sortOrder,
     } = req.query;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -2107,7 +2109,189 @@ export const getUncommittedPLayer = async (req, res) => {
 
     // === FETCH DATA ===
     const totalPlayers = await User.countDocuments(filter);
-    const players = await User.find(filter).populate("team").skip(skip).limit(parseInt(limit)).sort({ createdAt: -1 });
+
+    let players;
+
+    if (sortBy && sortBy !== 'createdAt') {
+      // === AGGREGATION PIPELINE FOR SORTING ===
+      const aggPipeline = [{ $match: filter }];
+
+      // Lookup team for population
+      aggPipeline.push(
+        { $lookup: { from: 'teams', localField: 'team', foreignField: '_id', as: '_teamArr' } },
+        { $addFields: { team: { $arrayElemAt: ['$_teamArr', 0] } } },
+        { $project: { _teamArr: 0 } }
+      );
+
+      // Extract first playerBasicInfo for sorting on basic info fields
+      aggPipeline.push({
+        $addFields: {
+          _basicInfo: { $arrayElemAt: ['$playerBasicInfo', 0] }
+        }
+      });
+
+      // Helper: safely convert any value to double
+      const toNumeric = (expr) => ({
+        $convert: { input: expr, to: "double", onError: 0, onNull: 0 }
+      });
+
+      const battingSortFields = new Set([
+        'batting_average', 'on_base_percentage', 'slugging_percentage', 'home_runs',
+        'rbi', 'hits', 'runs', 'doubles', 'triples', 'walks', 'strikeouts',
+        'stolen_bases', 'total_bases', 'on_base_plus_slugging', 'caught_stealing',
+        'at_bats', 'hit_by_pitch', 'sacrifice_flies', 'sacrifice_hits',
+        'games_played', 'games_started', 'grounded_into_double_play',
+        'walk_percentage', 'strikeout_percentage', 'intentional_walks',
+        'stolen_bases_against', 'finalScore'
+      ]);
+
+      const pitchingSortFields = new Set([
+        'era', 'wins', 'losses', 'strikeouts_pitched', 'innings_pitched',
+        'walks_allowed', 'hits_allowed', 'saves', 'appearances', 'doubles_allowed',
+        'home_runs_allowed', 'complete_games', 'earned_runs',
+        'batting_average_against', 'wild_pitches', 'games_pitched', 'shutouts',
+        'runs_allowed', 'triples_allowed', 'at_bats_against', 'hit_batters',
+        'balks', 'sacrifice_flies_allowed', 'sacrifice_hits_allowed',
+        'batting_average_allowed', 'WHIP'
+      ]);
+
+      const fieldingSortFields = new Set([
+        'fielding_percentage', 'errors', 'putouts', 'assists', 'double_plays',
+        'total_chances', 'passed_balls', 'stolen_bases_allowed',
+        'runners_caught_stealing_percentage', 'runners_caught_stealing',
+        'catcher_interference', 'fielding_games', 'stolen_base_success_rate',
+        'caught_stealing_by_catcher', 'stolen_base_attempt_percentage',
+        'f_stolen_bases_against'
+      ]);
+
+      let actualSortField = sortBy;
+
+      if (sortBy === 'height') {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: {
+              $let: {
+                vars: {
+                  h: { $ifNull: ["$_basicInfo.height", { $ifNull: ["$height", ""] }] }
+                },
+                in: {
+                  $cond: {
+                    if: { $or: [{ $eq: ["$$h", ""] }, { $eq: ["$$h", null] }] },
+                    then: 0,
+                    else: {
+                      $let: {
+                        vars: {
+                          normalized: {
+                            $replaceAll: {
+                              input: {
+                                $replaceAll: {
+                                  input: {
+                                    $replaceAll: {
+                                      input: { $toString: "$$h" },
+                                      find: "\"", replacement: ""
+                                    }
+                                  },
+                                  find: "'", replacement: "-"
+                                }
+                              },
+                              find: " ", replacement: ""
+                            }
+                          }
+                        },
+                        in: {
+                          $let: {
+                            vars: { parts: { $split: ["$$normalized", "-"] } },
+                            in: {
+                              $add: [
+                                { $multiply: [
+                                  { $convert: { input: { $arrayElemAt: ["$$parts", 0] }, to: "int", onError: 0, onNull: 0 } },
+                                  12
+                                ] },
+                                { $convert: { input: { $arrayElemAt: ["$$parts", 1] }, to: "int", onError: 0, onNull: 0 } }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (sortBy === 'weight') {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: toNumeric({ $ifNull: ["$_basicInfo.weight", { $ifNull: ["$weight", "0"] }] })
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (sortBy === 'jerseyNumber') {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: toNumeric({ $ifNull: ["$_basicInfo.jerseyNumber", { $ifNull: ["$jerseyNumber", "0"] }] })
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (sortBy === 'position' || sortBy === 'playerClass') {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: { $toLower: { $ifNull: [`$_basicInfo.${sortBy}`, ""] } }
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (sortBy === 'teamName') {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: { $toLower: { $ifNull: ["$team.name", ""] } }
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (sortBy === 'region') {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: { $toLower: { $ifNull: ["$team.region", ""] } }
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (battingSortFields.has(sortBy)) {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: toNumeric({ $arrayElemAt: [`$battingStats.${sortBy}`, 0] })
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (pitchingSortFields.has(sortBy)) {
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: toNumeric({ $arrayElemAt: [`$pitchingStats.${sortBy}`, 0] })
+          }
+        });
+        actualSortField = '_sortValue';
+      } else if (fieldingSortFields.has(sortBy)) {
+        const dbField = sortBy.startsWith('f_') ? sortBy.slice(2) : sortBy;
+        aggPipeline.push({
+          $addFields: {
+            _sortValue: toNumeric({ $arrayElemAt: [`$fieldingStats.${dbField}`, 0] })
+          }
+        });
+        actualSortField = '_sortValue';
+      }
+      // else: top-level string fields (firstName, lastName) - sort directly
+
+      aggPipeline.push(
+        { $sort: { [actualSortField]: sortOrder === "asc" ? 1 : -1 } },
+        { $skip: skip },
+        { $limit: parseInt(limit) }
+      );
+
+      players = await User.aggregate(aggPipeline);
+    } else {
+      // Default: no special sorting, use Mongoose find
+      players = await User.find(filter).populate("team").skip(skip).limit(parseInt(limit)).sort({ createdAt: -1 });
+    }
     if (!players.length) {
       if (name) return res.status(400).json({ message: "No uncommitted players found with this name" });
       if (normalizedYear) return res.status(400).json({ message: "No uncommitted players found with this year" });
@@ -2119,7 +2303,11 @@ export const getUncommittedPLayer = async (req, res) => {
     // console.log('players', players)
     const formattedPlayers = players
       .map(player => {
-        const data = player.toObject();
+        const data = typeof player.toObject === 'function' ? player.toObject() : { ...player };
+
+        // Clean up aggregation temp fields
+        delete data._sortValue;
+        delete data._basicInfo;
 
         if (normalizedYear) {
           data.battingStats = filterStatsByYear(data.battingStats, normalizedYear);

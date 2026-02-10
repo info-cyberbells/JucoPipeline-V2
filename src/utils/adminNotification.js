@@ -28,7 +28,7 @@ export const createAdminNotification = async ({
         if (meta.role === "coach" && !settings.triggers.coachRegistration) return;
 
         if (meta.role === "scout" && !settings.triggers.scoutRegistration) return;
-      } 
+      }
       // Handle mapped triggers
       else {
         const triggerKey = TYPE_TO_TRIGGER_MAP[type];
@@ -36,6 +36,30 @@ export const createAdminNotification = async ({
           return; // Notification disabled
         }
       }
+    }
+
+    // Create notification
+    // await Notification.create({
+    //   recipientRole: "superAdmin",
+    //   title,
+    //   message,
+    //   type,
+    //   referenceId,
+    //   createdBy,
+    //   meta
+    // });
+
+    // Check for duplicate unread notification
+    const existingNotification = await Notification.findOne({
+      recipientRole: "superAdmin",
+      type,
+      referenceId,
+      isRead: false
+    });
+
+    if (existingNotification) {
+      // Duplicate already exists → do not create again
+      return;
     }
 
     // Create notification

@@ -1,6 +1,8 @@
 import User from "../../models/user.model.js";
 import mongoose from "mongoose";
 import { formatUserDataUtility } from "../../utils/formatUserData.js";
+import { applyScoringLayer } from "../../utils/scoringLayer.js";
+import Region from "../../models/region.model.js";
 
 // GET ALL SCRAPE JOBS
 export const getAllScrapeJobs = async (req, res) => {
@@ -9,10 +11,12 @@ export const getAllScrapeJobs = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     // Build filter
-    const filter = {
-      csvImported: true,
-      lastCsvImport: { $exists: true, $ne: null }
-    };
+    // const filter = {
+    //   csvImported: true,
+    //   lastCsvImport: { $exists: true, $ne: null }
+    // };
+
+    const filter = {};
 
     // Search filter
     if (search) {
@@ -35,7 +39,6 @@ export const getAllScrapeJobs = async (req, res) => {
     const [scrapeJobs, totalCount] = await Promise.all([
       User.find(filter)
         .populate('team', 'name logo location division')
-        .select("firstName lastName email team position jerseyNumber profileImage registrationStatus lastCsvImport csvImported createdAt")
         .sort(sortOptions)
         .skip(skip)
         .limit(parseInt(limit)),
@@ -46,8 +49,8 @@ export const getAllScrapeJobs = async (req, res) => {
 
     // Format scrape jobs
     const formattedJobs = scrapeJobs.map(player => {
-      const data = player.toObject();
-
+      const userData = player.toObject();
+      const data = formatUserDataUtility(userData, baseURL);
       // Format profile image
       if (data.profileImage && !data.profileImage.startsWith("http")) {
         data.profileImage = `${baseURL}${data.profileImage}`;
@@ -59,8 +62,8 @@ export const getAllScrapeJobs = async (req, res) => {
       }
 
       // Format date (e.g., "Aug 5, 2025")
-      const lastRun = data.lastCsvImport 
-        ? new Date(data.lastCsvImport).toLocaleDateString('en-US', {
+      const lastRun = data.createdAt 
+        ? new Date(data.createdAt).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
@@ -89,7 +92,7 @@ export const getAllScrapeJobs = async (req, res) => {
         createdAt: data.createdAt
       };
     });
-
+    
     res.json({
       message: "Scrape jobs retrieved successfully",
       scrapeJobs: formattedJobs,
@@ -116,10 +119,7 @@ export const getScrapeJobById = async (req, res) => {
       return res.status(400).json({ message: "Invalid job ID format" });
     }
 
-    const player = await User.findById(jobId)
-      .populate('team', 'name logo location division region rank coachName')
-      .select("-password -photoIdDocuments");
-
+    const player = await User.findById(jobId).populate('team', 'name logo location division region rank coachName').select("-password -photoIdDocuments");
     if (!player) {
       return res.status(400).json({ message: "Scrape job not found" });
     }
@@ -138,8 +138,8 @@ export const getScrapeJobById = async (req, res) => {
     }
 
     // Format date
-    const lastRun = data.lastCsvImport 
-      ? new Date(data.lastCsvImport).toLocaleDateString('en-US', {
+    const lastRun = data.createdAt 
+      ? new Date(data.createdAt).toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
           year: 'numeric',
@@ -149,14 +149,30 @@ export const getScrapeJobById = async (req, res) => {
         })
       : "N/A";
 
-    res.json({
-      message: "Scrape job retrieved successfully",
-      scrapeJob: {
-        ...data,
-        jobName: `${data.firstName} ${data.lastName}`,
-        lastRun: lastRun
-      }
-    });
+    const formatedData = formatUserDataUtility(data, baseURL);
+
+     const regions = await Region.find().lean();
+        const regionMap = {};
+        regions.forEach(r => {
+          regionMap[r.tier] = {
+            multiplier: r.multiplier,
+            strengthLevel: r.strengthLevel
+          };
+        });
+    
+      //apply scoring on SAME object
+      const enrichedPlayers = applyScoringLayer([formatedData], regionMap);
+      const enrichedPlayerData = enrichedPlayers[0];
+
+      res.json({
+        message: "Scrape job retrieved successfully!!",
+        scrapeJob: {
+          ...enrichedPlayerData,
+          jobName: `${enrichedPlayerData.firstName} ${enrichedPlayerData.lastName}`,
+          lastRun: lastRun
+        }
+      });
+
   } catch (error) {
     console.error("Get Scrape Job Error:", error);
     res.status(500).json({ message: error.message });
@@ -283,7 +299,6 @@ export const updateScrapeJob = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 export const getAllUsersByRole = async (req, res) => {
   try {

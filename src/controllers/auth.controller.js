@@ -693,7 +693,7 @@ export const getPendingPlayers = async (req, res) => {
   try {
     const players = await User.find({
       role: "player",
-      registrationStatus: "pending"
+      registrationStatus: "inProgress"
     }).select("-password");
 
     const baseURL = getBaseURL(req);
@@ -708,11 +708,11 @@ export const getPendingPlayers = async (req, res) => {
           };
         });
     
-        //apply scoring on SAME object
-        const enrichedPlayers = applyScoringLayer(formattedPlayers, regionMap);
+      //apply scoring on SAME object
+      const enrichedPlayers = applyScoringLayer(formattedPlayers, regionMap);
 
 
-    res.json({ players: enrichedPlayers[0] });
+    res.json({ players: enrichedPlayers });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

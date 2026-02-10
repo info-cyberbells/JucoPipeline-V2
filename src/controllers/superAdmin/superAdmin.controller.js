@@ -81,7 +81,7 @@ export const getPendingApprovalsOLDWITHOUTCOUNTKEY = async (req, res) => {
 export const getPendingApprovals = async (req, res) => {
   try {
     const { page = 1, limit = 10, sortBy = "createdAt", sortOrder = "desc", role } = req.query;
-    const filter = { registrationStatus: "pending" };
+    const filter = { registrationStatus: "inProgress" };
     if (role && role !== "all") {
       filter.role = role;
     }
@@ -95,7 +95,7 @@ export const getPendingApprovals = async (req, res) => {
     User.countDocuments({ role: "player" }),
     User.countDocuments({ role: "coach" }),
     User.countDocuments({ role: "scout" }),
-    User.countDocuments({ role: "player", registrationStatus: "pending" })
+    User.countDocuments({ role: "player", registrationStatus: "inProgress" })
     ]);
 
     const baseURL = `${req.protocol}://${req.get("host")}`;

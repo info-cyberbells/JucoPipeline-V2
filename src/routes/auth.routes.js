@@ -1,8 +1,8 @@
 import express from "express";
-import { getUSStates, register, login, logout, registerPlayer, loginPlayer, approvePlayer, rejectPlayer, getPendingPlayers, getTeams, getTeamById, registerWithPayment, verifyRegistrationStatus, registerJucoCoachaMedia, uploadPublicUserVideos } from "../controllers/auth.controller.js";
+import { getUSStates, register, login, logout, registerPlayer, loginPlayer, approvePlayer, rejectPlayer, getPendingPlayers, getTeams, getTeamById, registerWithPayment, verifyRegistrationStatus, registerJucoCoachaMedia, uploadPublicUserVideos, forgotPassword, verifyOtp, resetPassword } from "../controllers/auth.controller.js";
 import { authenticate } from "../middleware/auth.middleware.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
-import { validateRegister, validateLogin, validatePlayerRegister, validatePlayerLogin, validateRejectPlayer } from "../validation/auth.validation.js";
+import { validateRegister, validateLogin, validatePlayerRegister, validatePlayerLogin, validateRejectPlayer, validateForgotPassword, validateVerifyOtp, validateResetPassword } from "../validation/auth.validation.js";
 import { uploadFiles, uploadVideos } from "../middleware/upload.middleware.js";
 import { getUpcomingGames } from "../controllers/superAdmin/game.controller.js";
 // import { getAllTeams, getTeamById, getPlayersByTeam, getTeamStatistics, getTeamPositions } from "../controllers/teamPlayers.controller.js";
@@ -23,6 +23,11 @@ router.get("/verify-registration", verifyRegistrationStatus);
 router.post("/webhooks/outseta", express.json(), handleOutsetaWebhook);
 
 router.post("/jucocoach-media-register", registerJucoCoachaMedia);
+
+router.post("/forgot-password", validateForgotPassword, forgotPassword);
+router.post("/verify-otp", validateVerifyOtp, verifyOtp);
+router.put("/reset-password", validateResetPassword, resetPassword);
+
 
 // Player registration
 // router.post("/player/register", validatePlayerRegister, registerPlayer);

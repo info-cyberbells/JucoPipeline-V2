@@ -320,43 +320,39 @@ const sendOTPEmail = async (email, otp, firstName) => {
 // FORGOT PASSWORD - SEND OTP
 export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    // Get logged-in user id from auth middleware
+    const userId = req.user.id;
+    const coach = await User.findOne({ _id: userId, role: "coach" });
 
-    // Find coach by email
-    const coach = await User.findOne({ email: email.toLowerCase(), role: "coach" });
-    
     if (!coach) {
-      return res.status(400).json({ 
-        message: "No coach account found with this email address" 
+      return res.status(403).json({
+        message: "Unauthorized access"
       });
     }
 
-    // Generate OTP
     const otp = generateOTP();
-    
-    // Set OTP expiration (10 minutes from now)
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Save OTP to database
     coach.resetPasswordToken = otp;
     coach.resetPasswordExpires = otpExpires;
     await coach.save();
 
-    // Send OTP via email
-    await sendOTPEmail(email, otp, coach.firstName);
+    // Send OTP to registered email (not from request)
+    await sendOTPEmail(coach.email, otp, coach.firstName);
 
     res.status(200).json({
-      message: "OTP has been sent to your email address",
-      email: email
+      message: "OTP has been sent to your registered email",
+      email: coach.email
     });
 
   } catch (error) {
     console.error("Forgot password error:", error);
-    res.status(500).json({ 
-      message: "Failed to send OTP. Please try again later." 
+    res.status(500).json({
+      message: "Failed to send OTP. Please try again later."
     });
   }
 };
+
 
 // VERIFY OTP
 export const verifyOtp = async (req, res) => {

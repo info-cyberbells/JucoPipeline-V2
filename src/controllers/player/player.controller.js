@@ -1964,7 +1964,7 @@ export const getUncommittedPLayer = async (req, res) => {
     // === BASE FILTER ===
     const filter = {
       role: "player",
-      registrationStatus: "approved"
+      // registrationStatus: "approved"
     };
 
     if (commitmentStatus) {

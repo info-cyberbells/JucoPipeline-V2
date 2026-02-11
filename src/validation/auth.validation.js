@@ -9,8 +9,8 @@ export const playerRegisterSchema = Joi.object({
   firstName: Joi.string().trim().max(191).required(),
   lastName: Joi.string().trim().max(191).allow(null, '').optional(),
   email: Joi.string().trim().email().optional(), // Optional for players
-  phoneNumber: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required().messages({ 
-    "string.pattern.base": "Invalid phone number format" 
+  phoneNumber: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required().messages({
+    "string.pattern.base": "Invalid phone number format"
   }),
   teamId: objectId.optional(),
   ncaaId: Joi.string().trim().allow(null, '').optional(),
@@ -32,7 +32,7 @@ export const registerSchema = Joi.object({
   email: Joi.string().trim().email().required(),
   password: Joi.string().min(6).required(),
   role: Joi.string().valid("scout", "coach").required(),
-  
+
   // Scout-specific fields
   // teamId: objectId.when('role', {
   //   is: 'scout',
@@ -47,7 +47,7 @@ export const registerSchema = Joi.object({
     then: Joi.required(),
     otherwise: Joi.forbidden()
   }),
-  
+
   // Coach-specific fields
   school: Joi.string().trim().max(191).when('role', {
     is: 'coach',
@@ -64,7 +64,7 @@ export const registerSchema = Joi.object({
     then: Joi.required(),
     otherwise: Joi.forbidden()
   }),
-  
+
   // Common field for both scout and coach
   state: Joi.string().trim().max(191).required(),
 }).unknown(false);
@@ -123,6 +123,78 @@ export const validateLogin = (req, res, next) => {
 
 export const validateRejectPlayer = (req, res, next) => {
   const { error } = rejectPlayerSchema.validate(req.body, { abortEarly: false });
+  if (error) {
+    return res.status(400).json({
+      message: error.details.map((d) => d.message).join(", "),
+    });
+  }
+  next();
+};
+
+// Forgot password validation (Step 1 - Send OTP)
+export const forgotPasswordSchema = Joi.object({
+  email: Joi.string().trim().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Invalid email format",
+    "any.required": "Email is required"
+  })
+}).unknown(false);
+
+export const validateForgotPassword = (req, res, next) => {
+  const { error } = forgotPasswordSchema.validate(req.body, { abortEarly: false });
+  if (error) {
+    return res.status(400).json({
+      message: error.details.map((d) => d.message).join(", "),
+    });
+  }
+  next();
+};
+
+// Verify OTP validation (Step 2 - Verify OTP)
+export const verifyOtpSchema = Joi.object({
+  email: Joi.string().trim().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Invalid email format",
+    "any.required": "Email is required"
+  }),
+  otp: Joi.string().length(6).pattern(/^[0-9]+$/).required().messages({
+    "string.empty": "OTP is required",
+    "string.length": "OTP must be 6 digits",
+    "string.pattern.base": "OTP must contain only numbers",
+    "any.required": "OTP is required"
+  })
+}).unknown(false);
+
+export const validateVerifyOtp = (req, res, next) => {
+  const { error } = verifyOtpSchema.validate(req.body, { abortEarly: false });
+  if (error) {
+    return res.status(400).json({
+      message: error.details.map((d) => d.message).join(", "),
+    });
+  }
+  next();
+};
+
+// Reset password validation (Step 3 - Change Password)
+export const resetPasswordSchema = Joi.object({
+  resetToken: Joi.string().required().messages({
+    "string.empty": "Reset token is required",
+    "any.required": "Reset token is required"
+  }),
+  newPassword: Joi.string().min(8).required().messages({
+    "string.empty": "New password is required",
+    "string.min": "New password must be at least 8 characters long",
+    "any.required": "New password is required"
+  }),
+  confirmPassword: Joi.string().required().valid(Joi.ref('newPassword')).messages({
+    "string.empty": "Confirm password is required",
+    "any.only": "New password and confirm password do not match",
+    "any.required": "Confirm password is required"
+  })
+}).unknown(false);
+
+export const validateResetPassword = (req, res, next) => {
+  const { error } = resetPasswordSchema.validate(req.body, { abortEarly: false });
   if (error) {
     return res.status(400).json({
       message: error.details.map((d) => d.message).join(", "),

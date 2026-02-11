@@ -7,7 +7,7 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 import mongoose from "mongoose";
 import Team from "../models/team.model.js";
 import outseta from "../config/outseta.config.js";
-
+import bcrypt from "bcryptjs";
 import PendingRegistration from "../models/pendingRegistration.model.js";
 import Subscription from "../models/subscription.model.js";
 import stripe, { SUBSCRIPTION_PLANS } from "../config/stripe.js";
@@ -1117,7 +1117,7 @@ export {
 };
 
 // Forgot Password
-export const forgotPassword = async (req, res) => {
+export const forgotPasswordOLLDD = async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -1140,7 +1140,7 @@ export const forgotPassword = async (req, res) => {
     // Send Email
     const msg = {
       to: user.email,
-      from: "info.cyberbells@gmail.com",
+      from: process.env.SENDGRID_FROM_EMAIL,
       subject: "Password Reset Request",
       html: `
         <h3>Password Reset</h3>
@@ -1157,13 +1157,13 @@ export const forgotPassword = async (req, res) => {
       message: "Password reset link sent successfully",
     });
   } catch (error) {
-    console.error("Forgot password error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
+  console.error("Forgot password error:", error.response?.body || error);
+  return res.status(500).json({ success: false, message: "Server error" });
+}
 };
 
 // Reset Password
-export const resetPassword = async (req, res) => {
+export const resetPasswordOLDDD = async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
@@ -1172,7 +1172,7 @@ export const resetPassword = async (req, res) => {
 
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: Date.now() }, // not expired
+      resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user)
@@ -1181,7 +1181,7 @@ export const resetPassword = async (req, res) => {
         message: "Invalid or expired token",
       });
 
-    user.password = password; // hashing will happen in model pre-save
+    user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 
@@ -1194,6 +1194,206 @@ export const resetPassword = async (req, res) => {
   } catch (error) {
     console.error("Reset password error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Helper function to generate 6-digit OTP
+const generateOTP = () => {
+  return crypto.randomInt(100000, 999999).toString();
+};
+
+// Configure SendGrid
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const sendOTPEmail = async (email, otp, firstName) => {
+  const msg = {
+    to: email,
+    from: process.env.SENDGRID_FROM_EMAIL,
+    subject: 'Password Reset OTP',
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">Password Reset Request</h2>
+        <p>Hello ${firstName || 'Coach'},</p>
+        <p>You have requested to reset your password. Please use the following OTP to proceed:</p>
+        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
+          <h1 style="color: #4CAF50; font-size: 36px; letter-spacing: 8px; margin: 0;">${otp}</h1>
+        </div>
+        <p style="color: #666;">This OTP is valid for <strong>10 minutes</strong>.</p>
+        <p style="color: #999; font-size: 14px;">If you did not request this, please ignore this email and your password will remain unchanged.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px;">Best regards,<br>Juco Pipeline</p>
+      </div>
+    `,
+    text: `Hello ${firstName || 'Coach'},\n\nYou have requested to reset your password. Please use the following OTP to proceed:\n\n${otp}\n\nThis OTP is valid for 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nJuco Pipeline`
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`OTP email sent successfully to ${email}`);
+  } catch (error) {
+    console.error('SendGrid error:', error.response?.body || error);
+    throw new Error('Failed to send email');
+  }
+};
+
+// FORGOT PASSWORD - SEND OTP
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      return res.status(400).json({ 
+        message: "No account found with this email address" 
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    
+    // Set OTP expiration (10 minutes from now)
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Save OTP to database
+    user.resetPasswordToken = otp;
+    user.resetPasswordExpires = otpExpires;
+    await user.save();
+
+    // Send OTP via email
+    await sendOTPEmail(email, otp, user.firstName);
+
+    res.status(200).json({
+      message: "OTP has been sent to your email address",
+      email: email
+    });
+
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ 
+      message: "Failed to send OTP. Please try again later." 
+    });
+  }
+};
+
+// VERIFY OTP
+export const verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    // Find user by email
+    const user = await User.findOne({ 
+      email: email.toLowerCase(), 
+    });
+
+    if (!user) {
+      return res.status(400).json({ 
+        message: "No account found with this email address" 
+      });
+    }
+
+    // Check if OTP exists
+    if (!user.resetPasswordToken) {
+      return res.status(400).json({ 
+        message: "No OTP found. Please request a new one." 
+      });
+    }
+
+    // Check if OTP has expired
+    if (user.resetPasswordExpires < new Date()) {
+      user.resetPasswordToken = null;
+      user.resetPasswordExpires = null;
+      await user.save();
+      
+      return res.status(400).json({ 
+        message: "OTP has expired. Please request a new one." 
+      });
+    }
+
+    // Verify OTP
+    if (user.resetPasswordToken !== otp) {
+      return res.status(400).json({ 
+        message: "Invalid OTP. Please check and try again." 
+      });
+    }
+
+    // Generate a temporary reset token (valid for 15 minutes)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Save reset token (replace OTP with reset token)
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = resetTokenExpires;
+    await user.save();
+
+    res.status(200).json({
+      message: "OTP verified successfully. You can now reset your password.",
+      resetToken: resetToken
+    });
+
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    res.status(500).json({ 
+      message: "Failed to verify OTP. Please try again later." 
+    });
+  }
+};
+
+// RESET PASSWORD
+export const resetPassword = async (req, res) => {
+  try {
+    const { resetToken, newPassword, confirmPassword } = req.body;
+
+    // Find user by reset token
+    const user = await User.findOne({ 
+      resetPasswordToken: resetToken,
+      resetPasswordExpires: { $gt: new Date() } // Token must not be expired
+    }).select("+password");
+
+    if (!user) {
+      return res.status(400).json({ 
+        message: "Invalid or expired reset token. Please request a new OTP." 
+      });
+    }
+
+    // Check if new password matches confirm password (already validated by Joi)
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ 
+        message: "New password and confirm password do not match" 
+      });
+    }
+
+    // Check only if old password exists
+    if (user.password) {
+      const isSameAsOld = await bcrypt.compare(newPassword, user.password);
+
+      if (isSameAsOld) {
+        return res.status(400).json({ 
+          message: "New password cannot be the same as your previous password" 
+        });
+      }
+    }
+
+
+
+    // Update password (assuming your User model has pre-save hook for hashing)
+    user.password = newPassword;
+    
+    // Clear reset token fields
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    
+    await user.save();
+
+    res.status(200).json({
+      message: "Password has been reset successfully. You can now login with your new password."
+    });
+
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ 
+      message: "Failed to reset password. Please try again later." 
+    });
   }
 };
 

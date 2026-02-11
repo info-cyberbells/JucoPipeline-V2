@@ -3,7 +3,7 @@ import { authenticate } from "../middleware/auth.middleware.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
 import { uploadProfile } from "../middleware/upload.middleware.js";
 import { validateUpdateScoutProfile, validateForgotPassword, validateVerifyOtp, validateResetPassword } from "../validation/scoutProfile.validation.js";
-import { getScoutDashboard, getSuggestedProfiles, followUser, unfollowUser, getFollowingList, getFollowersList, checkIfFollowing, getTopPlayers, getFollowedPlayersForMessaging } from "../controllers/scout/scoutDashboard.controller.js";
+import { getScoutDashboard, getSuggestedProfiles, followUser, unfollowUser, getFollowingList, getFollowersList, checkIfFollowing, getTopPlayers, getFollowedPlayersForMessaging, followTeam, unfollowTeam, getFollowedTeams, checkIfFollowingTeam, getTeamFollowersCount } from "../controllers/scout/scoutDashboard.controller.js";
 import { getScoutProfile, updateScoutProfile, updateScoutProfileImage, deleteScoutProfileImage, resetPassword, forgotPassword, verifyOtp } from "../controllers/scout/scoutProfile.controller.js";
 import { getPlayerById, getUncommittedPLayer, getTop10PlayersByMetric, getAvailableMetrics, searchPlayersForStatistics } from "../controllers/player/player.controller.js";
 import { getAllTeams, getTeamRoster } from "../controllers/teams.controller.js";
@@ -36,6 +36,13 @@ router.delete("/unfollow/:userId", unfollowUser);
 router.get("/following/check/:userId", checkIfFollowing);
 router.get("/following", getFollowingList);
 router.get("/followers", getFollowersList);
+
+// Teams Following
+router.post("/follow-team/:teamId", followTeam);
+router.delete("/unfollow-team/:teamId", unfollowTeam);
+router.get("/followed-teams", getFollowedTeams);
+router.get("/check-following-team/:teamId", checkIfFollowingTeam);
+router.get("/team-followers/:teamId", getTeamFollowersCount);
 
 router.get("/player-profile/:playerId", getPlayerById);
 router.get("/player-uncommitted", getUncommittedPLayer);

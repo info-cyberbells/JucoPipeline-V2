@@ -1,5 +1,7 @@
 import User from "../../models/user.model.js";
 import Follow from "../../models/follow.model.js";
+import FollowTeam from "../../models/followTeam.model.js";
+import Team from "../../models/team.model.js";
 import mongoose from "mongoose";
 import { formatUserDataUtility } from "../../utils/formatUserData.js";
 import { applyScoringLayer } from "../../utils/scoringLayer.js";
@@ -1197,6 +1199,194 @@ export const getFollowedPlayersForMessaging = async (req, res) => {
 
   } catch (error) {
     console.error("Get Followed Players For Messaging Error:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// FOLLOW TEAM
+export const followTeam = async (req, res) => {
+  try {
+    const scoutId = req.user.id;
+    const { teamId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({ message: "Invalid team ID" });
+    }
+
+    // Check if team exists
+    const team = await Team.findById(teamId);
+    if (!team) {
+      return res.status(400).json({ message: "Team not found" });
+    }
+
+    // Check if team is active
+    if (!team.isActive) {
+      return res.status(400).json({ message: "Cannot follow inactive team" });
+    }
+
+    // Check if already following
+    const existingFollow = await FollowTeam.findOne({
+      coach: scoutId,
+      team: teamId
+    });
+
+    if (existingFollow) {
+      return res.status(400).json({ message: "Already following this team" });
+    }
+
+    // Create follow relationship
+    await FollowTeam.create({
+      coach: scoutId,
+      team: teamId
+    });
+
+    res.json({
+      message: "Successfully followed team",
+      followedTeam: {
+        _id: team._id,
+        name: team.name,
+        logo: team.logo,
+        division: team.division,
+        region: team.region
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// UNFOLLOW TEAM
+export const unfollowTeam = async (req, res) => {
+  try {
+    const scoutId = req.user.id;
+    const { teamId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({ message: "Invalid team ID" });
+    }
+
+    // Check if following relationship exists
+    const followTeam = await FollowTeam.findOneAndDelete({
+      coach: scoutId,
+      team: teamId
+    });
+
+    if (!followTeam) {
+      return res.status(400).json({ message: "Not following this team" });
+    }
+
+    res.json({
+      message: "Successfully unfollowed team"
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET FOLLOWED TEAMS LIST
+export const getFollowedTeams = async (req, res) => {
+  try {
+    const scoutId = req.user.id;
+    const { page = 1, limit = 20 } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [followedTeams, totalCount] = await Promise.all([
+      FollowTeam.find({ coach: scoutId })
+        .populate({
+          path: 'team',
+          select: 'name logo location division region rank coachName conference isActive'
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      FollowTeam.countDocuments({ coach: scoutId })
+    ]);
+
+    const baseURL = `${req.protocol}://${req.get("host")}`;
+    const formattedTeams = followedTeams
+      .filter(ft => ft.team && ft.team.isActive)
+      .map(followTeam => {
+        const team = followTeam.team;
+        return {
+          _id: team._id,
+          name: team.name,
+          logo: team.logo
+            ? team.logo.startsWith("http")
+              ? team.logo
+              : `${baseURL}${team.logo}`
+            : null,
+
+          location: team.location ? team.location : null,
+          division: team.division ? team.division : null,
+          region: team.region ? team.region : null,
+          rank: team.rank ? team.rank : null,
+          coachName: team.coachName ? team.coachName : null,
+          conference: team.conference ? team.conference : null,
+          home: team.home ? team.home : null,
+          away: team.away ? team.away : null,
+          neutral: team.neutral ? team.neutral : null,
+          followedAt: followTeam.followedAt
+        };
+      });
+
+    res.json({
+      message: "Followed teams retrieved successfully",
+      teams: formattedTeams,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        totalCount,
+        limit: parseInt(limit),
+        hasMore: skip + formattedTeams.length < totalCount
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// CHECK IF FOLLOWING TEAM
+export const checkIfFollowingTeam = async (req, res) => {
+  try {
+    const scoutId = req.user.id;
+    const { teamId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({ message: "Invalid team ID" });
+    }
+
+    const isFollowing = await FollowTeam.exists({
+      coach: scoutId,
+      team: teamId
+    });
+
+    res.json({
+      message: "Follow status retrieved successfully",
+      isFollowing: !!isFollowing
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET TEAM FOLLOWERS COUNT
+export const getTeamFollowersCount = async (req, res) => {
+  try {
+    const { teamId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(teamId)) {
+      return res.status(400).json({ message: "Invalid team ID" });
+    }
+
+    const followersCount = await FollowTeam.countDocuments({ team: teamId });
+
+    res.json({
+      message: "Team followers count retrieved successfully",
+      teamId,
+      followersCount
+    });
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };

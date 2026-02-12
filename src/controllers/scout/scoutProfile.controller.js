@@ -291,38 +291,56 @@ export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
-    // Find scout by email
-    const scout = await User.findOne({ email: email.toLowerCase(), role: "scout" });
-    
+    if (!email) {
+      return res.status(400).json({
+        message: "Email is required"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // === CHECK: Email must match logged-in user email ===
+    if (!req.user || req.user.email.toLowerCase() !== normalizedEmail) {
+      return res.status(403).json({
+        message: "You can only request OTP for your own account"
+      });
+    }
+
+    // Find scout using authenticated user id (extra safety)
+    const scout = await User.findOne({
+      _id: req.user.id,
+      role: "scout",
+      email: normalizedEmail
+    });
+
     if (!scout) {
-      return res.status(400).json({ 
-        message: "No scout account found with this email address" 
+      return res.status(404).json({
+        message: "Scout account not found"
       });
     }
 
     // Generate OTP
     const otp = generateOTP();
-    
-    // Set OTP expiration (10 minutes from now)
+
+    // Expiry: 10 minutes
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Save OTP to database
     scout.resetPasswordToken = otp;
     scout.resetPasswordExpires = otpExpires;
     await scout.save();
 
-    // Send OTP via email
-    await sendOTPEmail(email, otp, scout.firstName);
+    // Send OTP
+    await sendOTPEmail(scout.email, otp, scout.firstName);
 
     res.status(200).json({
       message: "OTP has been sent to your email address",
-      email: email
+      email: scout.email
     });
 
   } catch (error) {
     console.error("Forgot password error:", error);
-    res.status(500).json({ 
-      message: "Failed to send OTP. Please try again later." 
+    res.status(500).json({
+      message: "Failed to send OTP. Please try again later."
     });
   }
 };

@@ -57,7 +57,7 @@ export const updateCoachProfile = async (req, res) => {
     } = req.body;
 
     const coach = await User.findById(coachId);
-    
+
     if (!coach || coach.role !== "coach") {
       return res.status(403).json({ message: "Access denied. Coach role required." });
     }
@@ -65,17 +65,17 @@ export const updateCoachProfile = async (req, res) => {
     // Update personal information
     if (firstName !== undefined) coach.firstName = firstName;
     if (lastName !== undefined) coach.lastName = lastName;
-    
+
     // Check if email is being changed and if it's already in use
     if (email !== undefined && email !== coach.email) {
-      const existingUser = await User.findOne({ 
-        email: email.toLowerCase(), 
-        _id: { $ne: coachId } 
+      const existingUser = await User.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: coachId }
       });
-      
+
       if (existingUser) {
-        return res.status(400).json({ 
-          message: "Email already in use by another user" 
+        return res.status(400).json({
+          message: "Email already in use by another user"
         });
       }
       coach.email = email.toLowerCase();
@@ -84,8 +84,8 @@ export const updateCoachProfile = async (req, res) => {
     // Update password if provided
     if (password !== undefined && password.trim() !== "") {
       if (password.length < 8) {
-        return res.status(400).json({ 
-          message: "Password must be at least 8 characters" 
+        return res.status(400).json({
+          message: "Password must be at least 8 characters"
         });
       }
       // const salt = await bcrypt.genSalt(10);
@@ -124,13 +124,13 @@ export const updateCoachProfile = async (req, res) => {
 export const updateCoachProfileImage = async (req, res) => {
   try {
     const coachId = req.user.id;
-    
+
     if (!req.files || !req.files.profileImage) {
       return res.status(400).json({ message: "No image file uploaded" });
     }
 
     const coach = await User.findById(coachId);
-    
+
     if (!coach || coach.role !== "coach") {
       return res.status(403).json({ message: "Access denied. Coach role required." });
     }
@@ -149,7 +149,7 @@ export const updateCoachProfileImage = async (req, res) => {
     }
 
     const file = req.files.profileImage[0];
-    
+
     // Update profile image
     coach.profileImage = `/uploads/profiles/${file.filename}`;
 
@@ -173,7 +173,7 @@ export const deleteCoachProfileImage = async (req, res) => {
     const coachId = req.user.id;
 
     const coach = await User.findById(coachId);
-    
+
     if (!coach || coach.role !== "coach") {
       return res.status(403).json({ message: "Access denied. Coach role required." });
     }
@@ -219,37 +219,37 @@ export const changePassword = async (req, res) => {
 
     // Validate required fields
     if (!currentPassword || !newPassword || !confirmPassword) {
-      return res.status(400).json({ 
-        message: "All fields are required" 
+      return res.status(400).json({
+        message: "All fields are required"
       });
     }
 
     // Validate new password length
     if (newPassword.length < 8) {
-      return res.status(400).json({ 
-        message: "New password must be at least 8 characters long" 
+      return res.status(400).json({
+        message: "New password must be at least 8 characters long"
       });
     }
 
     // Check if new password and confirm password match
     if (newPassword !== confirmPassword) {
-      return res.status(400).json({ 
-        message: "New password and confirm password do not match" 
+      return res.status(400).json({
+        message: "New password and confirm password do not match"
       });
     }
 
     // Check if new password is same as current password
     if (currentPassword === newPassword) {
-      return res.status(400).json({ 
-        message: "New password cannot be the same as current password" 
+      return res.status(400).json({
+        message: "New password cannot be the same as current password"
       });
     }
 
     // Get coach with password field
     const coach = await User.findById(coachId).select("+password");
     if (!coach || coach.role !== "coach") {
-      return res.status(403).json({ 
-        message: "Access denied. Coach role required." 
+      return res.status(403).json({
+        message: "Access denied. Coach role required."
       });
     }
 
@@ -257,8 +257,8 @@ export const changePassword = async (req, res) => {
     // const isPasswordValid = await bcrypt.compare(currentPassword, coach.password);
     const isPasswordValid = await bcrypt.compare(currentPassword, coach.password);
     if (!isPasswordValid) {
-      return res.status(401).json({ 
-        message: "Current password is incorrect" 
+      return res.status(401).json({
+        message: "Current password is incorrect"
       });
     }
 
@@ -318,7 +318,7 @@ const sendOTPEmail = async (email, otp, firstName) => {
 };
 
 // FORGOT PASSWORD - SEND OTP
-export const forgotPassword = async (req, res) => {
+export const forgotPasswordOLDDD = async (req, res) => {
   try {
     // Get logged-in user id from auth middleware
     const userId = req.user.id;
@@ -353,6 +353,63 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        message: "Email is required"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // === CHECK: Email must match logged-in user email ===
+    if (!req.user || req.user.email.toLowerCase() !== normalizedEmail) {
+      return res.status(403).json({
+        message: "You can only request OTP for your own account"
+      });
+    }
+
+    // Find coach using authenticated user id (extra safety)
+    const coach = await User.findOne({
+      _id: req.user.id,
+      role: "coach",
+      email: normalizedEmail
+    });
+
+    if (!coach) {
+      return res.status(404).json({
+        message: "Coach account not found"
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+
+    // Expiry: 10 minutes
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    coach.resetPasswordToken = otp;
+    coach.resetPasswordExpires = otpExpires;
+    await coach.save();
+
+    // Send OTP
+    await sendOTPEmail(coach.email, otp, coach.firstName);
+
+    res.status(200).json({
+      message: "OTP has been sent to your email address",
+      email: coach.email
+    });
+
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({
+      message: "Failed to send OTP. Please try again later."
+    });
+  }
+};
 
 // VERIFY OTP
 export const verifyOtp = async (req, res) => {
@@ -360,21 +417,21 @@ export const verifyOtp = async (req, res) => {
     const { email, otp } = req.body;
 
     // Find coach by email
-    const coach = await User.findOne({ 
-      email: email.toLowerCase(), 
-      role: "coach" 
+    const coach = await User.findOne({
+      email: email.toLowerCase(),
+      role: "coach"
     });
 
     if (!coach) {
-      return res.status(400).json({ 
-        message: "No coach account found with this email address" 
+      return res.status(400).json({
+        message: "No coach account found with this email address"
       });
     }
 
     // Check if OTP exists
     if (!coach.resetPasswordToken) {
-      return res.status(400).json({ 
-        message: "No OTP found. Please request a new one." 
+      return res.status(400).json({
+        message: "No OTP found. Please request a new one."
       });
     }
 
@@ -383,16 +440,16 @@ export const verifyOtp = async (req, res) => {
       coach.resetPasswordToken = null;
       coach.resetPasswordExpires = null;
       await coach.save();
-      
-      return res.status(400).json({ 
-        message: "OTP has expired. Please request a new one." 
+
+      return res.status(400).json({
+        message: "OTP has expired. Please request a new one."
       });
     }
 
     // Verify OTP
     if (coach.resetPasswordToken !== otp) {
-      return res.status(400).json({ 
-        message: "Invalid OTP. Please check and try again." 
+      return res.status(400).json({
+        message: "Invalid OTP. Please check and try again."
       });
     }
 
@@ -412,8 +469,8 @@ export const verifyOtp = async (req, res) => {
 
   } catch (error) {
     console.error("Verify OTP error:", error);
-    res.status(500).json({ 
-      message: "Failed to verify OTP. Please try again later." 
+    res.status(500).json({
+      message: "Failed to verify OTP. Please try again later."
     });
   }
 };
@@ -424,40 +481,40 @@ export const resetPassword = async (req, res) => {
     const { resetToken, newPassword, confirmPassword } = req.body;
 
     // Find coach by reset token
-    const coach = await User.findOne({ 
+    const coach = await User.findOne({
       resetPasswordToken: resetToken,
       role: "coach",
       resetPasswordExpires: { $gt: new Date() } // Token must not be expired
     }).select("+password");
 
     if (!coach) {
-      return res.status(400).json({ 
-        message: "Invalid or expired reset token. Please request a new OTP." 
+      return res.status(400).json({
+        message: "Invalid or expired reset token. Please request a new OTP."
       });
     }
 
     // Check if new password matches confirm password (already validated by Joi)
     if (newPassword !== confirmPassword) {
-      return res.status(400).json({ 
-        message: "New password and confirm password do not match" 
+      return res.status(400).json({
+        message: "New password and confirm password do not match"
       });
     }
 
     // Optional: Check if new password is same as old password
     const isSameAsOld = await bcrypt.compare(newPassword, coach.password);
     if (isSameAsOld) {
-      return res.status(400).json({ 
-        message: "New password cannot be the same as your previous password" 
+      return res.status(400).json({
+        message: "New password cannot be the same as your previous password"
       });
     }
 
     // Update password (assuming your User model has pre-save hook for hashing)
     coach.password = newPassword;
-    
+
     // Clear reset token fields
     coach.resetPasswordToken = null;
     coach.resetPasswordExpires = null;
-    
+
     await coach.save();
 
     res.status(200).json({
@@ -466,8 +523,8 @@ export const resetPassword = async (req, res) => {
 
   } catch (error) {
     console.error("Reset password error:", error);
-    res.status(500).json({ 
-      message: "Failed to reset password. Please try again later." 
+    res.status(500).json({
+      message: "Failed to reset password. Please try again later."
     });
   }
 };

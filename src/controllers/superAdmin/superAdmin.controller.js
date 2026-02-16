@@ -88,7 +88,7 @@ export const getPendingApprovals = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
-    const [pendingUsers, totalPendingCount, totalUsers, totalPlayers, totalCoaches, totalScouts, totalPendingPlayers] = await Promise.all([User.find(filter).populate("team", "name").select("firstName lastName email role team phoneNumber createdAt registrationStatus profileImage").sort(sortOptions).skip(skip).limit(parseInt(limit)),
+    const [pendingUsers, totalPendingCount, totalUsers, totalPlayers, totalCoaches, totalScouts, totalPendingPlayers] = await Promise.all([User.find(filter).populate("team", "name").sort(sortOptions).skip(skip).limit(parseInt(limit)),
     User.countDocuments(filter),
     // Counts
     User.countDocuments({ role: { $in: ["player", "coach", "scout"] } }),

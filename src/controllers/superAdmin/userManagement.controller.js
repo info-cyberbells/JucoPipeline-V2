@@ -4,11 +4,11 @@ import mongoose from "mongoose";
 // Helper to format user data
 const formatUserData = (user, baseURL) => {
   const userData = user.toObject();
-  
+
   if (userData.profileImage && !userData.profileImage.startsWith("http")) {
     userData.profileImage = `${baseURL}${userData.profileImage}`;
   }
-  
+
   delete userData.password;
   return userData;
 };
@@ -142,32 +142,32 @@ export const updateUser = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
 
     // Prevent role escalation to superAdmin
     if (role === "superAdmin" && user.role !== "superAdmin") {
-      return res.status(403).json({ 
-        message: "Cannot assign superAdmin role" 
+      return res.status(403).json({
+        message: "Cannot assign superAdmin role"
       });
     }
 
     // Update fields
     if (firstName !== undefined) user.firstName = firstName;
     if (lastName !== undefined) user.lastName = lastName;
-    
+
     if (email !== undefined && email !== user.email) {
       // Check if email already exists
-      const existingUser = await User.findOne({ 
-        email: email.toLowerCase(), 
-        _id: { $ne: userId } 
+      const existingUser = await User.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: userId }
       });
-      
+
       if (existingUser) {
-        return res.status(400).json({ 
-          message: "Email already in use by another user" 
+        return res.status(400).json({
+          message: "Email already in use by another user"
         });
       }
       user.email = email.toLowerCase();
@@ -177,7 +177,7 @@ export const updateUser = async (req, res) => {
     if (organization !== undefined) user.organization = organization;
     if (role !== undefined) user.role = role;
     if (certificate !== undefined) user.certificate = certificate;
-    
+
     if (registrationStatus !== undefined) {
       user.registrationStatus = registrationStatus;
       if (registrationStatus === "approved") {
@@ -224,7 +224,7 @@ export const updateUserStatus = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
@@ -260,15 +260,15 @@ export const deleteUser = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
 
     // Prevent deleting superAdmin
     if (user.role === "superAdmin") {
-      return res.status(403).json({ 
-        message: "Cannot delete super admin account" 
+      return res.status(403).json({
+        message: "Cannot delete super admin account"
       });
     }
 
@@ -286,12 +286,12 @@ export const deleteUser = async (req, res) => {
 export const getUserCountsByRole = async (req, res) => {
   try {
     const [
-      totalUsers, 
-      players, 
-      coaches, 
-      scouts, 
-      approved, 
-      pending, 
+      totalUsers,
+      players,
+      coaches,
+      scouts,
+      approved,
+      pending,
       rejected,
       activeUsers,
       inactiveUsers
@@ -367,7 +367,7 @@ export const getRecentlyEditedUsers = async (req, res) => {
 };
 
 // GET Manual Edit USERS BY Admin
-export const manualEditListing = async (req, res) => {
+export const manualEditListingOLD = async (req, res) => {
   try {
     const {
       page = 1,
@@ -381,7 +381,7 @@ export const manualEditListing = async (req, res) => {
     } = req.query;
 
     const filter = {
-      commitmentUpdatedByAdmin : true,
+      commitmentUpdatedByAdmin: true,
     };
 
     // Filter by role
@@ -409,6 +409,93 @@ export const manualEditListing = async (req, res) => {
         { school: { $regex: search, $options: 'i' } },
         { organization: { $regex: search, $options: 'i' } }
       ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
+    const [users, totalCount] = await Promise.all([
+      User.find(filter)
+        .select("-password")
+        .populate('manualEditBy', 'firstName lastName email role')
+        .populate('approvedBy', 'firstName lastName email role')
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(parseInt(limit)),
+      User.countDocuments(filter)
+    ]);
+
+    const baseURL = `${req.protocol}://${req.get("host")}`;
+    const formattedUsers = users.map(user => formatUserData(user, baseURL));
+
+    res.json({
+      message: "Users retrieved successfully",
+      users: formattedUsers,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        totalCount,
+        limit: parseInt(limit),
+        hasMore: skip + formattedUsers.length < totalCount
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const manualEditListing = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      role,
+      status,
+      commitmentStatus,
+      search,
+      sortBy = "updatedAt",
+      sortOrder = "desc"
+    } = req.query;
+
+    let filter = {};
+
+    // ================================
+    // CASE 1: If admin is searching
+    // ================================
+    if (search) {
+      filter.role = "player";
+
+      filter.$or = [
+        { firstName: { $regex: `^${search}$`, $options: 'i' } },
+        { lastName: { $regex: `^${search}$`, $options: 'i' } },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$firstName", " ", "$lastName"] },
+              regex: search,
+              options: "i"
+            }
+          }
+        }
+      ];
+    }
+    // =====================================
+    // CASE 2: Normal listing
+    // =====================================
+    else {
+      filter.commitmentUpdatedByAdmin = true;
+
+      if (role && role !== "all") {
+        filter.role = role;
+      }
+
+      if (status && status !== "all") {
+        filter.registrationStatus = status;
+      }
+
+      if (commitmentStatus && commitmentStatus !== "all") {
+        filter.commitmentStatus = commitmentStatus;
+      }
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);

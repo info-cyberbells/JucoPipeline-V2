@@ -28,6 +28,21 @@ function getLatestSeasonYear(arr = []) {
     return latest;
 }
 
+// Get File Type
+const getFileType = (url = "") => {
+    const ext = url.split('.').pop().toLowerCase();
+
+    const imageExt = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+    const pdfExt = ["pdf"];
+    const csvExt = ["csv", "xlsx"];
+
+    if (imageExt.includes(ext)) return "image";
+    if (pdfExt.includes(ext)) return "pdf";
+    if (csvExt.includes(ext)) return "csv";
+
+    return "other";
+};
+
 // FORMATTER
 export const formatUserDataUtility = (userDoc, baseURL) => {
     const user = userDoc.toObject ? userDoc.toObject() : userDoc;
@@ -41,18 +56,44 @@ export const formatUserDataUtility = (userDoc, baseURL) => {
         user.profileImage = `${baseURL}${user.profileImage}`;
     }
 
-    if (user.photoIdDocument?.documentUrl && !user.photoIdDocument.documentUrl.startsWith("http")) {
-        user.photoIdDocument.documentUrl = `${baseURL}${user.photoIdDocument.documentUrl}`;
+    // if (user.photoIdDocument?.documentUrl && !user.photoIdDocument.documentUrl.startsWith("http")) {
+    //     user.photoIdDocument.documentUrl = `${baseURL}${user.photoIdDocument.documentUrl}`;
+    // }
+
+    // if (Array.isArray(user.photoIdDocuments)) {
+    //     user.photoIdDocuments = user.photoIdDocuments.map(doc => ({
+    //         ...doc,
+    //         documentUrl: doc.documentUrl?.startsWith("http") ? doc.documentUrl : `${baseURL}${doc.documentUrl}`
+    //     }));
+    // }
+
+    if (user.photoIdDocument?.documentUrl) {
+        let url = user.photoIdDocument.documentUrl;
+
+        if (!url.startsWith("http")) {
+            url = `${baseURL}${url}`;
+        }
+
+        user.photoIdDocument.documentUrl = url;
+        user.photoIdDocument.fileType = getFileType(url);
     }
 
     if (Array.isArray(user.photoIdDocuments)) {
-        user.photoIdDocuments = user.photoIdDocuments.map(doc => ({
-            ...doc,
-            documentUrl: doc.documentUrl?.startsWith("http")
-                ? doc.documentUrl
-                : `${baseURL}${doc.documentUrl}`
-        }));
+        user.photoIdDocuments = user.photoIdDocuments.map(doc => {
+            let url = doc.documentUrl;
+
+            if (url && !url.startsWith("http")) {
+                url = `${baseURL}${url}`;
+            }
+
+            return {
+                ...doc,
+                documentUrl: url,
+                fileType: getFileType(url)
+            };
+        });
     }
+
 
     // Videos
     if (Array.isArray(user.videos)) {

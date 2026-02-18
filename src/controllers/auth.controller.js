@@ -449,6 +449,19 @@ export const loginPlayer = async (req, res) => {
   try {
     const { teamId, playerName, email } = req.body;
 
+    // Handle Photo ID Document (if uploaded)
+    let photoIdDocumentData = null;
+    if (req.files?.photoIdDocument?.length > 0) {
+      const photoIdDocumentUrl = `/uploads/photo-ids/${req.files.photoIdDocument[0].filename}`;
+
+      photoIdDocumentData = {
+        documentUrl: photoIdDocumentUrl,
+        uploadedAt: new Date(),
+        ipAddress: req.ip || req.connection.remoteAddress,
+        userAgent: req.headers["user-agent"]
+      };
+    }
+
     // Validate required fields
     if (!email || email.trim() === "") {
       return res.status(400).json({ message: "Email is required" });
@@ -528,6 +541,9 @@ export const loginPlayer = async (req, res) => {
       // Update player email
       player.email = email.toLowerCase();
       player.registrationStatus = "inProgress";
+      if (photoIdDocumentData) {
+        player.photoIdDocument = photoIdDocumentData;
+      }
       await player.save();
 
       // SuperAdmin Notification
@@ -556,6 +572,12 @@ export const loginPlayer = async (req, res) => {
         status: false,
         message: "Email does not match our records"
       });
+    }
+
+    // Save new document if uploaded
+    if (photoIdDocumentData) {
+      player.photoIdDocument = photoIdDocumentData;
+      await player.save();
     }
 
     // Check registration status
@@ -694,7 +716,8 @@ export const getPendingPlayers = async (req, res) => {
     const players = await User.find({
       role: "player",
       registrationStatus: "inProgress"
-    }).select("-password");
+    }).select("-password")
+    .sort({ createdAt: -1 });
 
     const baseURL = getBaseURL(req);
     const formattedPlayers = players.map(p => formatUserData(p, baseURL));

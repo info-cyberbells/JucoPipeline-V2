@@ -28,7 +28,6 @@ const formatUserData = (user, baseURL) => {
 };
 
 // ============= PENDING APPROVALS =============
-
 // Get all pending approvals
 export const getPendingApprovalsOLDWITHOUTCOUNTKEY = async (req, res) => {
   try {
@@ -87,7 +86,7 @@ export const getPendingApprovals = async (req, res) => {
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+    const sortOptions = { [sortBy]: sortOrder === "desc" ? 1 : -1 };
     const [pendingUsers, totalPendingCount, totalUsers, totalPlayers, totalCoaches, totalScouts, totalPendingPlayers] = await Promise.all([User.find(filter).populate("team", "name").sort(sortOptions).skip(skip).limit(parseInt(limit)),
     User.countDocuments(filter),
     // Counts
@@ -130,7 +129,6 @@ export const getPendingApprovals = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 // Get user details by ID (for "View Profile" action)
 export const getUserDetails = async (req, res) => {
@@ -367,7 +365,6 @@ export const getPendingCounts = async (req, res) => {
   }
 };
 
-
 // Requests Video
 export const getVideoRequestsOLDD = async (req, res) => {
   try {
@@ -458,7 +455,6 @@ export const updateVideoRequestStatus = async (req, res) => {
   }
 };
 
-
 // notifications
 export const getAdminNotifications = async (req, res) => {
   try {
@@ -491,7 +487,6 @@ export const getAdminNotifications = async (req, res) => {
   }
 };
 
-
 // notification-settings
 export const getAdminNotificationSettings = async (req, res) => {
   try {
@@ -511,8 +506,6 @@ export const getAdminNotificationSettings = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 // notification-settings
 export const updateAdminNotificationSettings = async (req, res) => {

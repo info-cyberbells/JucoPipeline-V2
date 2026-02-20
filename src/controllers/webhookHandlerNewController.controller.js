@@ -193,27 +193,71 @@ export const handleOutsetaWebhook = async (req, res) => {
 async function handleOutsetaSubscriptionCreated(account) {
   console.log("Outseta subscription created for account:", account.Uid);
 
+  const accountUid = account.Uid;
+  const email = account.PrimaryContact?.Email;
+  const referer = account.PrimaryContact?.Referer || "";
+  console.log('accountUid',accountUid);
+  console.log('email',email);
+  console.log('referer',referer);
+
   const subscription = account.CurrentSubscription;
   if (!subscription) {
     console.log("No active subscription found");
     return;
   }
+  
+  // Referer URL se pendingRegistrationId extract karo
+  let pendingRegId = null;
+  try {
+    const refererUrl = new URL(referer);
+    pendingRegId = refererUrl.searchParams.get("Account.pendingRegistrationId");
+    email = refererUrl.searchParams.get("email");
+  } catch (e) {
+    webhookLogger.warn("Referer parse failed", { referer });
+  }
+  console.log('pendingRegId',pendingRegId);
+  webhookLogger.info("Extracted pendingRegId", { pendingRegId, email });
 
-  const accountUid = account.Uid;
-  const email = account.PrimaryContact?.Email;
+  // PRIMARY: ID se match
+  let pendingReg = null;
+  if (pendingRegId) {
+    pendingReg = await PendingRegistration.findOneAndUpdate(
+      { _id: pendingRegId, status: "pending_payment" },
+      { $set: { status: "payment_processing" } },
+      { new: false }
+    );
+  }
 
-  // 🔎 Find pending registration by EMAIL (BEST MATCH)
-  const pendingReg = await PendingRegistration.findOne({ email });
+  // FALLBACK: Email se match
+  if (!pendingReg) {
+    webhookLogger.warn("ID match failed, trying email fallback", { pendingRegId, email });
+    pendingReg = await PendingRegistration.findOneAndUpdate(
+      { email, status: "pending_payment" },
+      { $set: { status: "payment_processing" } },
+      { new: false }
+    );
+  }
 
   if (!pendingReg) {
-    console.log("No pending registration found");
+    webhookLogger.warn("No pending registration found", { pendingRegId, email });
     return;
   }
 
-  if (pendingReg.status === "completed") {
-    console.log("Registration already completed");
-    return;
-  }
+  // const accountUid = account.Uid;
+  // const email = account.PrimaryContact?.Email;
+
+  // // 🔎 Find pending registration by EMAIL (BEST MATCH)
+  // const pendingReg = await PendingRegistration.findOne({ email });
+
+  // if (!pendingReg) {
+  //   console.log("No pending registration found");
+  //   return;
+  // }
+
+  // if (pendingReg.status === "completed") {
+  //   console.log("Registration already completed");
+  //   return;
+  // }
 
   // 🔎 Prevent duplicate user creation
   const existingUser = await User.findOne({ outsetaAccountUid: accountUid });
@@ -226,7 +270,7 @@ async function handleOutsetaSubscriptionCreated(account) {
   const userData = {
     firstName: pendingReg.firstName,
     lastName: pendingReg.lastName,
-    email,
+    email: pendingReg.email,
     password: pendingReg.password,
     role: pendingReg.role,
     state: pendingReg.state,
@@ -251,8 +295,6 @@ async function handleOutsetaSubscriptionCreated(account) {
     userData.conference = pendingReg.conference;
   }
 
-  // Insert Outseta Webhook Response into outsetaMeta
-  userData.outsetaMeta = { ...account };
   const user = await User.create(userData);
 
   // Create Subscription record

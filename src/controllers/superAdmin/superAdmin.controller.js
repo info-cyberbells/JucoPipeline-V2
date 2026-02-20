@@ -89,7 +89,6 @@ export const getPendingApprovals = async (req, res) => {
     const sortOptions = { [sortBy]: sortOrder === "desc" ? 1 : -1 };
     const [pendingUsers, totalPendingCount, totalUsers, totalPlayers, totalCoaches, totalScouts, totalPendingPlayers] = await Promise.all([User.find(filter).populate("team", "name").sort(sortOptions).skip(skip).limit(parseInt(limit)),
     User.countDocuments(filter),
-    // Counts
     User.countDocuments({ role: { $in: ["player", "coach", "scout"] } }),
     User.countDocuments({ role: "player" }),
     User.countDocuments({ role: "coach" }),
@@ -115,6 +114,93 @@ export const getPendingApprovals = async (req, res) => {
       },
 
       // List data
+      pendingApprovals: formattedUsers,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalPendingCount / parseInt(limit)),
+        totalCount: totalPendingCount,
+        limit: parseInt(limit),
+        hasMore: skip + formattedUsers.length < totalPendingCount
+      }
+    });
+  } catch (error) {
+    console.error("Pending Approval Error:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getPendingApprovalsssss = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      role
+    } = req.query;
+
+    // Base filter
+    const filter = {
+      registrationStatus: "inProgress"
+    };
+
+    // Role filter logic
+    if (!role || role === "all") {
+      console.log('HELLO INSIDE');
+      filter.role = { $in: ["player", "coach", "scout"] };
+    } else {
+      console.log('CODE')
+      filter.role = role;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Correct sorting (desc should be -1)
+    const sortOptions = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+    const [
+      pendingUsers,
+      totalPendingCount,
+      totalUsers,
+      totalPlayers,
+      totalCoaches,
+      totalScouts,
+      totalPendingPlayers
+    ] = await Promise.all([
+      User.find(filter)
+        .populate("team", "name")
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(parseInt(limit)),
+
+      User.countDocuments(filter),
+
+      User.countDocuments({ role: { $in: ["player", "coach", "scout"] } }),
+      User.countDocuments({ role: "player" }),
+      User.countDocuments({ role: "coach" }),
+      User.countDocuments({ role: "scout" }),
+      User.countDocuments({
+        role: "player",
+        registrationStatus: "inProgress"
+      })
+    ]);
+
+    const baseURL = `${req.protocol}://${req.get("host")}`;
+
+    const formattedUsers = pendingUsers.map(user =>
+      formatUserDataUtility(user, baseURL)
+    );
+
+    res.json({
+      message: "Pending approvals retrieved successfully",
+      summary: {
+        totalUsers,
+        totalPlayers,
+        totalCoaches,
+        totalScouts,
+        pendingApprovals: totalPendingPlayers,
+        scrapeJobsInProgress: "",
+        videoUploadRequests: ""
+      },
       pendingApprovals: formattedUsers,
       pagination: {
         currentPage: parseInt(page),
